@@ -29,10 +29,11 @@ public class DatenizenTags {
     // -->
 
     public static void register() {
-        TagManager.registerTagHandler("db_query", attribute -> {
+        // ИСПРАВЛЕНИЕ ЗДЕСЬ: добавлен ListTag.class первым аргументом
+        TagManager.registerTagHandler(ListTag.class, "db_query", attribute -> {
             if (!attribute.hasParam()) return null;
             String id = attribute.getParam();
-            
+
             attribute.fulfill(1);
 
             if (attribute.startsWith("sql") && attribute.hasParam()) {

@@ -45,7 +45,8 @@ public class DbExecuteCommand extends AbstractCommand {
             } else if (!scriptEntry.hasObject("sql") && arg.matchesPrefix("sql")) {
                 scriptEntry.addObject("sql", arg.asElement());
             } else if (!scriptEntry.hasObject("args") && arg.matchesPrefix("args")) {
-                scriptEntry.addObject("args", arg.asList());
+                // ИСПРАВЛЕНИЕ ЗДЕСЬ: используем asType(ListTag.class)
+                scriptEntry.addObject("args", arg.asType(ListTag.class));
             } else {
                 arg.reportUnhandled();
             }
@@ -64,7 +65,7 @@ public class DbExecuteCommand extends AbstractCommand {
         Bukkit.getScheduler().runTaskAsynchronously(Datenizen.getInstance(), () -> {
             try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id.asString());
                  PreparedStatement ps = conn.prepareStatement(sql.asString())) {
-                
+
                 if (args != null) {
                     for (int i = 0; i < args.size(); i++) {
                         ps.setObject(i + 1, args.get(i));
