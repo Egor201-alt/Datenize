@@ -29,7 +29,6 @@ public class DatenizenTags {
     // -->
 
     public static void register() {
-        // ИСПРАВЛЕНИЕ ЗДЕСЬ: добавлен ListTag.class первым аргументом
         TagManager.registerTagHandler(ListTag.class, "db_query", attribute -> {
             if (!attribute.hasParam()) return null;
             String id = attribute.getParam();
@@ -41,8 +40,8 @@ public class DatenizenTags {
                 attribute.fulfill(1);
 
                 ListTag args = null;
-                if (attribute.startsWith("args") && attribute.hasContextObject()) {
-                    args = attribute.contextAsType(ListTag.class);
+                if (attribute.startsWith("args") && attribute.hasParam()) {
+                    args = attribute.contextAsType(1, ListTag.class);
                     attribute.fulfill(1);
                 }
 

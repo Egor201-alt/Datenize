@@ -45,7 +45,6 @@ public class DbExecuteCommand extends AbstractCommand {
             } else if (!scriptEntry.hasObject("sql") && arg.matchesPrefix("sql")) {
                 scriptEntry.addObject("sql", arg.asElement());
             } else if (!scriptEntry.hasObject("args") && arg.matchesPrefix("args")) {
-                // ИСПРАВЛЕНИЕ ЗДЕСЬ: используем asType(ListTag.class)
                 scriptEntry.addObject("args", arg.asType(ListTag.class));
             } else {
                 arg.reportUnhandled();
