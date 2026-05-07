@@ -70,9 +70,13 @@ processResources {
 shadowJar {
     archiveClassifier.set('')
 
-    relocate 'com.zaxxer.hikari', 'com.yourname.datenizen.libs.hikari'
-    relocate 'com.mysql', 'com.yourname.datenizen.libs.mysql'
-    relocate 'org.postgresql', 'com.yourname.datenizen.libs.postgresql'
+    exclude 'META-INF/*.SF'
+    exclude 'META-INF/*.DSA'
+    exclude 'META-INF/*.RSA'
+    
+    relocate 'com.zaxxer.hikari', 'com.egor201.datenizen.libs.hikari'
+    relocate 'com.mysql', 'com.egor201.datenizen.libs.mysql'
+    relocate 'org.postgresql', 'com.egor201.datenizen.libs.postgresql'
 }
 
 tasks.build {
