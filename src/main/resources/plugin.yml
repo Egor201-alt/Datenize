@@ -1,0 +1,7 @@
+name: Datenizen
+version: '${version}'
+main: com.egor201.datenizen.Datenizen
+api-version: '1.21'
+depend: [Denizen]
+description: The ultimate Universal Database Addon for Denizen scripts.
+authors: [Твой_Ник]
