@@ -8,29 +8,27 @@ import com.denizenscript.denizencore.scripts.ScriptEntry;
 import com.denizenscript.denizencore.scripts.commands.AbstractCommand;
 import com.egor201.datenizen.Datenizen;
 import com.egor201.datenizen.events.DbErrorEvent;
-import org.bukkit.Bukkit;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 
-public class DbExecuteCommand extends AbstractCommand {
+public class DbExecuteSyncCommand extends AbstractCommand {
 
     // <--[command]
-    // @Name db_execute
-    // @Syntax db_execute [id:<id>] [sql:<query>] (args:<list>) (tx:<tx_id>)
+    // @Name db_execute_sync
+    // @Syntax db_execute_sync [id:<id>][sql:<query>] (args:<list>) (tx:<tx_id>)
     // @Required 2
     // @Maximum 4
-    // @Short Executes an async SQL update, insert, or delete query.
+    // @Short Executes a synchronous SQL query.
     // @Group Datenizen
     //
     // @Description
-    // Executes a query asynchronously. 
-    // Use 'tx' to execute within a specific transaction started by db_transaction.
+    // Executes a query on the main thread. Useful for server shutdown or player quit events.
     // -->
 
-    public DbExecuteCommand() {
-        setName("db_execute");
-        setSyntax("db_execute [id:<id>] [sql:<query>] (args:<list>) (tx:<tx_id>)");
+    public DbExecuteSyncCommand() {
+        setName("db_execute_sync");
+        setSyntax("db_execute_sync [id:<id>] [sql:<query>] (args:<list>) (tx:<tx_id>)");
         setRequiredArguments(2, 4);
     }
 
@@ -49,9 +47,6 @@ public class DbExecuteCommand extends AbstractCommand {
                 arg.reportUnhandled();
             }
         }
-        if (!scriptEntry.hasObject("id") || !scriptEntry.hasObject("sql")) {
-            throw new InvalidArgumentsException("Must specify id and sql!");
-        }
     }
 
     @Override
@@ -62,31 +57,27 @@ public class DbExecuteCommand extends AbstractCommand {
         ElementTag txTag = scriptEntry.getElement("tx");
         String txId = txTag != null ? txTag.asString() : null;
 
-        Bukkit.getScheduler().runTaskAsynchronously(Datenizen.getInstance(), () -> {
-            Connection conn = null;
-            PreparedStatement ps = null;
-            try {
-                conn = txId != null ? Datenizen.getInstance().getDatabaseManager().getTransactionConnection(txId) 
-                                    : Datenizen.getInstance().getDatabaseManager().getConnection(id);
-                
-                if (conn == null) throw new Exception("Connection not found!");
+        Connection conn = null;
+        PreparedStatement ps = null;
+        try {
+            conn = txId != null ? Datenizen.getInstance().getDatabaseManager().getTransactionConnection(txId) 
+                                : Datenizen.getInstance().getDatabaseManager().getConnection(id);
+            
+            if (conn == null) throw new Exception("Connection not found!");
 
-                ps = conn.prepareStatement(sql);
-                if (args != null) {
-                    for (int i = 0; i < args.size(); i++) {
-                        ps.setObject(i + 1, args.get(i));
-                    }
+            ps = conn.prepareStatement(sql);
+            if (args != null) {
+                for (int i = 0; i < args.size(); i++) {
+                    ps.setObject(i + 1, args.get(i));
                 }
-                ps.executeUpdate();
-            } catch (Exception e) {
-                e.printStackTrace();
-                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> {
-                    DbErrorEvent.instance.fireFor(id, e.getMessage(), sql);
-                });
-            } finally {
-                try { if (ps != null) ps.close(); } catch (Exception ignored) {}
-                try { if (conn != null && txId == null) conn.close(); } catch (Exception ignored) {}
             }
-        });
+            ps.executeUpdate();
+        } catch (Exception e) {
+            e.printStackTrace();
+            DbErrorEvent.instance.fireFor(id, e.getMessage(), sql);
+        } finally {
+            try { if (ps != null) ps.close(); } catch (Exception ignored) {}
+            try { if (conn != null && txId == null) conn.close(); } catch (Exception ignored) {}
+        }
     }
 }
