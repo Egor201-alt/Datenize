@@ -1,13 +1,15 @@
 package com.egor201.datenizen.database;
 
 import com.egor201.datenizen.Datenizen;
-import com.egor201.datenizen.events.DbConnectionLeakedEvent;
+import com.egor201.datenizen.events.DbTransactionExpiredEvent;
+import com.egor201.datenizen.events.DbDisconnectedEvent;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.bukkit.Bukkit;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -29,10 +31,10 @@ public class DatabaseManager {
             for (Map.Entry<String, Long> entry : transactionStartTimes.entrySet()) {
                 if (now - entry.getValue() > 300000) { 
                     String txId = entry.getKey();
-                    long duration = (now - entry.getValue()) / 1000;
+                    String dbId = transactionDbIds.get(txId);
                     
                     Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> 
-                        DbConnectionLeakedEvent.instance.fireFor(txId, duration)
+                        DbTransactionExpiredEvent.instance.fireFor(txId, dbId)
                     );
                     
                     try {
@@ -45,15 +47,12 @@ public class DatabaseManager {
 
     public boolean connect(String id, String driver, String url, String user, String password) {
         if (connectionPools.containsKey(id)) return false;
-
         try {
             HikariConfig config = new HikariConfig();
             config.setDriverClassName(driver);
             config.setJdbcUrl(url);
-
             if (user != null && !user.isEmpty()) config.setUsername(user);
             if (password != null && !password.isEmpty()) config.setPassword(password);
-
             config.setMaximumPoolSize(10);
             config.setMinimumIdle(2);
             config.setConnectionTimeout(10000);
@@ -67,6 +66,18 @@ public class DatabaseManager {
             e.printStackTrace();
             return false;
         }
+    }
+
+    public boolean disconnect(String id) {
+        HikariDataSource ds = connectionPools.remove(id);
+        if (ds != null && !ds.isClosed()) {
+            ds.close();
+            Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> 
+                DbDisconnectedEvent.instance.fireFor(id)
+            );
+            return true;
+        }
+        return false;
     }
 
     public Connection getConnection(String id) throws SQLException {
@@ -130,6 +141,22 @@ public class DatabaseManager {
 
     public String getTxDbId(String txId) {
         return transactionDbIds.get(txId);
+    }
+
+    public void cleanPool(String id) {
+        HikariDataSource ds = connectionPools.get(id);
+        if (ds != null && ds.getHikariPoolMXBean() != null) {
+            ds.getHikariPoolMXBean().softEvictConnections();
+        }
+    }
+
+    public void analyze(String id) throws SQLException {
+        String type = getDatabaseType(id);
+        String sql = type.equals("sqlite") ? "VACUUM" : "ANALYZE";
+        try (Connection conn = getConnection(id);
+             Statement st = conn.createStatement()) {
+            st.execute(sql);
+        }
     }
 
     public void closeAllConnections() {
