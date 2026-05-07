@@ -1,1 +1,8 @@
 rootProject.name = 'Datenizen'
+
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
