@@ -1,10 +1,9 @@
 plugins {
     id 'java'
-
     id 'com.github.johnrengelman.shadow' version '8.3.3'
 }
 
-group = 'com.yourname' 
+group = 'com.egor201'
 version = '1.0.0'
 
 repositories {
