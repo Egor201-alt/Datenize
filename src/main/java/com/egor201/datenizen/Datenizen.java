@@ -6,6 +6,7 @@ import com.egor201.datenizen.commands.*;
 import com.egor201.datenizen.database.DatabaseManager;
 import com.egor201.datenizen.events.DbConnectedEvent;
 import com.egor201.datenizen.events.DbErrorEvent;
+import com.egor201.datenizen.events.DbConnectionLeakedEvent;
 import com.egor201.datenizen.tags.DatenizenTags;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -31,9 +32,15 @@ public final class Datenizen extends JavaPlugin {
         DenizenCore.commandRegistry.registerCommand(DbExecuteSyncCommand.class);
         DenizenCore.commandRegistry.registerCommand(DbTransactionCommand.class);
         DenizenCore.commandRegistry.registerCommand(DbBackupCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbImportCsvCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbExecuteAsyncListCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbExecuteBatchCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbSetPoolSizeCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbDropTableCommand.class);
 
         ScriptEvent.registerScriptEvent(new DbConnectedEvent());
         ScriptEvent.registerScriptEvent(new DbErrorEvent());
+        ScriptEvent.registerScriptEvent(new DbConnectionLeakedEvent());
 
         DatenizenTags.register();
     }

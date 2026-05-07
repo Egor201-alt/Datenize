@@ -6,6 +6,8 @@ import com.denizenscript.denizencore.objects.core.MapTag;
 import com.denizenscript.denizencore.tags.TagManager;
 import com.egor201.datenizen.Datenizen;
 import com.egor201.datenizen.events.DbErrorEvent;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import com.zaxxer.hikari.HikariDataSource;
 import com.zaxxer.hikari.HikariPoolMXBean;
 import org.bukkit.Bukkit;
@@ -49,65 +51,41 @@ public class DatenizenTags {
 
     public static void register() {
 
-        // <--[tag]
-        // @Attribute <db_query[<id>].sql[<query>].args[<list>]>
-        // @Returns ListTag
-        // @Group Datenizen
-        // @Description Queries the database and returns a list of maps.
-        // -->
         TagManager.registerTagHandler(ListTag.class, "db_query", attribute -> {
             if (!attribute.hasParam()) return null;
             String id = attribute.getParam();
             attribute.fulfill(1);
-
             if (attribute.startsWith("sql") && attribute.hasParam()) {
                 String sql = attribute.getParam();
                 attribute.fulfill(1);
-
-                ListTag args = null;
-                if (attribute.startsWith("args") && attribute.hasParam()) {
-                    args = attribute.contextAsType(1, ListTag.class);
-                    attribute.fulfill(1);
-                }
-
+                ListTag args = attribute.startsWith("args") && attribute.hasParam() ? attribute.contextAsType(1, ListTag.class) : null;
+                if (args != null) attribute.fulfill(1);
                 return getResultSetAsList(id, sql, args);
             }
             return null;
         });
 
-        // <--[tag]
-        // @Attribute <db_rows[<id>].sql[<query>].args[<list>]>
-        // @Returns ListTag
-        // @Group Datenizen
-        // @Description Alias for db_query. Returns a list of maps.
-        // -->
         TagManager.registerTagHandler(ListTag.class, "db_rows", attribute -> {
             if (!attribute.hasParam()) return null;
             String id = attribute.getParam();
             attribute.fulfill(1);
-
             if (attribute.startsWith("sql") && attribute.hasParam()) {
                 String sql = attribute.getParam();
                 attribute.fulfill(1);
-
-                ListTag args = null;
-                if (attribute.startsWith("args") && attribute.hasParam()) {
-                    args = attribute.contextAsType(1, ListTag.class);
-                    attribute.fulfill(1);
-                }
-
+                ListTag args = attribute.startsWith("args") && attribute.hasParam() ? attribute.contextAsType(1, ListTag.class) : null;
+                if (args != null) attribute.fulfill(1);
                 return getResultSetAsList(id, sql, args);
             }
             return null;
         });
 
         // <--[tag]
-        // @Attribute <db_value[<id>].sql[<query>].args[<list>]>
-        // @Returns ElementTag
+        // @Attribute <db_convert_map[<id>].sql[<query>].args[<list>]>
+        // @Returns MapTag
         // @Group Datenizen
-        // @Description Returns the first column of the first row of a query.
+        // @Description Returns a MapTag where the first column is the key and the second is the value.
         // -->
-        TagManager.registerTagHandler(ElementTag.class, "db_value", attribute -> {
+        TagManager.registerTagHandler(MapTag.class, "db_convert_map", attribute -> {
             if (!attribute.hasParam()) return null;
             String id = attribute.getParam();
             attribute.fulfill(1);
@@ -116,11 +94,8 @@ public class DatenizenTags {
                 String sql = attribute.getParam();
                 attribute.fulfill(1);
 
-                ListTag args = null;
-                if (attribute.startsWith("args") && attribute.hasParam()) {
-                    args = attribute.contextAsType(1, ListTag.class);
-                    attribute.fulfill(1);
-                }
+                ListTag args = attribute.startsWith("args") && attribute.hasParam() ? attribute.contextAsType(1, ListTag.class) : null;
+                if (args != null) attribute.fulfill(1);
 
                 try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id);
                      PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -129,6 +104,141 @@ public class DatenizenTags {
                         for (int i = 0; i < args.size(); i++) ps.setObject(i + 1, args.get(i));
                     }
 
+                    try (ResultSet rs = ps.executeQuery()) {
+                        MapTag map = new MapTag();
+                        while (rs.next()) {
+                            Object key = rs.getObject(1);
+                            Object val = rs.getObject(2);
+                            if (key != null) {
+                                map.putObject(key.toString(), new ElementTag(val == null ? "null" : val.toString()));
+                            }
+                        }
+                        return map;
+                    }
+                } catch (Exception e) {
+                    Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> DbErrorEvent.instance.fireFor(id, e.getMessage(), sql));
+                }
+            }
+            return null;
+        });
+
+        // <--[tag]
+        // @Attribute <db_query_as_json[<id>].sql[<query>].args[<list>]>
+        // @Returns ElementTag
+        // @Group Datenizen
+        // @Description Returns the query result as a JSON array string.
+        // -->
+        TagManager.registerTagHandler(ElementTag.class, "db_query_as_json", attribute -> {
+            if (!attribute.hasParam()) return null;
+            String id = attribute.getParam();
+            attribute.fulfill(1);
+
+            if (attribute.startsWith("sql") && attribute.hasParam()) {
+                String sql = attribute.getParam();
+                attribute.fulfill(1);
+
+                ListTag args = attribute.startsWith("args") && attribute.hasParam() ? attribute.contextAsType(1, ListTag.class) : null;
+                if (args != null) attribute.fulfill(1);
+
+                try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id);
+                     PreparedStatement ps = conn.prepareStatement(sql)) {
+
+                    if (args != null) {
+                        for (int i = 0; i < args.size(); i++) ps.setObject(i + 1, args.get(i));
+                    }
+
+                    try (ResultSet rs = ps.executeQuery()) {
+                        ResultSetMetaData meta = rs.getMetaData();
+                        int columnCount = meta.getColumnCount();
+                        JsonArray jsonArray = new JsonArray();
+
+                        while (rs.next()) {
+                            JsonObject obj = new JsonObject();
+                            for (int i = 1; i <= columnCount; i++) {
+                                String val = rs.getString(i);
+                                obj.addProperty(meta.getColumnName(i), val == null ? "null" : val);
+                            }
+                            jsonArray.add(obj);
+                        }
+                        return new ElementTag(jsonArray.toString());
+                    }
+                } catch (Exception e) {
+                    Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> DbErrorEvent.instance.fireFor(id, e.getMessage(), sql));
+                }
+            }
+            return null;
+        });
+
+        // <--[tag]
+        // @Attribute <db_last_id[<tx_id>]>
+        // @Returns ElementTag
+        // @Group Datenizen
+        // @Description Returns the last inserted ID. MUST be used providing a Transaction ID to guarantee the same connection.
+        // -->
+        TagManager.registerTagHandler(ElementTag.class, "db_last_id", attribute -> {
+            if (!attribute.hasParam()) return null;
+            String txId = attribute.getParam();
+            attribute.fulfill(1);
+
+            Connection conn = Datenizen.getInstance().getDatabaseManager().getTransactionConnection(txId);
+            if (conn == null) return null;
+
+            String dbId = Datenizen.getInstance().getDatabaseManager().getTxDbId(txId);
+            String type = Datenizen.getInstance().getDatabaseManager().getDatabaseType(dbId);
+            String sql = type.equals("sqlite") ? "SELECT last_insert_rowid()" : (type.equals("postgresql") ? "SELECT LASTVAL()" : "SELECT LAST_INSERT_ID()");
+
+            try (PreparedStatement ps = conn.prepareStatement(sql);
+                 ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return new ElementTag(rs.getString(1));
+                }
+            } catch (Exception e) {
+                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> DbErrorEvent.instance.fireFor(dbId, e.getMessage(), sql));
+            }
+            return null;
+        });
+
+        // <--[tag]
+        // @Attribute <db_exists_table[<id>].table[<name>]>
+        // @Returns ElementTag(Boolean)
+        // @Group Datenizen
+        // @Description Returns true if the specified table exists in the database.
+        // -->
+        TagManager.registerTagHandler(ElementTag.class, "db_exists_table", attribute -> {
+            if (!attribute.hasParam()) return null;
+            String id = attribute.getParam();
+            attribute.fulfill(1);
+
+            if (attribute.startsWith("table") && attribute.hasParam()) {
+                String table = attribute.getParam();
+                attribute.fulfill(1);
+
+                try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id)) {
+                    DatabaseMetaData meta = conn.getMetaData();
+                    try (ResultSet rs = meta.getTables(null, null, table, null)) {
+                        return new ElementTag(rs.next());
+                    }
+                } catch (Exception e) {
+                    Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> DbErrorEvent.instance.fireFor(id, e.getMessage(), "CHECK TABLE EXISTS"));
+                }
+            }
+            return new ElementTag(false);
+        });
+
+        TagManager.registerTagHandler(ElementTag.class, "db_value", attribute -> {
+            if (!attribute.hasParam()) return null;
+            String id = attribute.getParam();
+            attribute.fulfill(1);
+            if (attribute.startsWith("sql") && attribute.hasParam()) {
+                String sql = attribute.getParam();
+                attribute.fulfill(1);
+                ListTag args = attribute.startsWith("args") && attribute.hasParam() ? attribute.contextAsType(1, ListTag.class) : null;
+                if (args != null) attribute.fulfill(1);
+                try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id);
+                     PreparedStatement ps = conn.prepareStatement(sql)) {
+                    if (args != null) {
+                        for (int i = 0; i < args.size(); i++) ps.setObject(i + 1, args.get(i));
+                    }
                     try (ResultSet rs = ps.executeQuery()) {
                         if (rs.next()) {
                             Object val = rs.getObject(1);
@@ -142,34 +252,20 @@ public class DatenizenTags {
             return null;
         });
 
-        // <--[tag]
-        // @Attribute <db_exists[<id>].sql[<query>].args[<list>]>
-        // @Returns ElementTag(Boolean)
-        // @Group Datenizen
-        // @Description Returns true if the query returns at least one row.
-        // -->
         TagManager.registerTagHandler(ElementTag.class, "db_exists", attribute -> {
             if (!attribute.hasParam()) return null;
             String id = attribute.getParam();
             attribute.fulfill(1);
-
             if (attribute.startsWith("sql") && attribute.hasParam()) {
                 String sql = attribute.getParam();
                 attribute.fulfill(1);
-
-                ListTag args = null;
-                if (attribute.startsWith("args") && attribute.hasParam()) {
-                    args = attribute.contextAsType(1, ListTag.class);
-                    attribute.fulfill(1);
-                }
-
+                ListTag args = attribute.startsWith("args") && attribute.hasParam() ? attribute.contextAsType(1, ListTag.class) : null;
+                if (args != null) attribute.fulfill(1);
                 try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id);
                      PreparedStatement ps = conn.prepareStatement(sql)) {
-
                     if (args != null) {
                         for (int i = 0; i < args.size(); i++) ps.setObject(i + 1, args.get(i));
                     }
-
                     try (ResultSet rs = ps.executeQuery()) {
                         return new ElementTag(rs.next());
                     }
@@ -180,21 +276,13 @@ public class DatenizenTags {
             return new ElementTag(false);
         });
 
-        // <--[tag]
-        // @Attribute <db_columns[<id>].table[<name>]>
-        // @Returns ListTag
-        // @Group Datenizen
-        // @Description Returns a list of column names in a table.
-        // -->
         TagManager.registerTagHandler(ListTag.class, "db_columns", attribute -> {
             if (!attribute.hasParam()) return null;
             String id = attribute.getParam();
             attribute.fulfill(1);
-
             if (attribute.startsWith("table") && attribute.hasParam()) {
                 String table = attribute.getParam();
                 attribute.fulfill(1);
-
                 try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id)) {
                     DatabaseMetaData meta = conn.getMetaData();
                     try (ResultSet rs = meta.getColumns(null, null, table, null)) {
@@ -211,27 +299,18 @@ public class DatenizenTags {
             return null;
         });
 
-        // <--[tag]
-        // @Attribute <db_count[<id>].table[<name>].where[<condition>]>
-        // @Returns ElementTag(Number)
-        // @Group Datenizen
-        // @Description Generates and executes a SELECT COUNT(*) query.
-        // -->
         TagManager.registerTagHandler(ElementTag.class, "db_count", attribute -> {
             if (!attribute.hasParam()) return null;
             String id = attribute.getParam();
             attribute.fulfill(1);
-
             if (attribute.startsWith("table") && attribute.hasParam()) {
                 String table = attribute.getParam();
                 attribute.fulfill(1);
-
                 String condition = "1=1";
                 if (attribute.startsWith("where") && attribute.hasParam()) {
                     condition = attribute.getParam();
                     attribute.fulfill(1);
                 }
-
                 String sql = "SELECT COUNT(*) FROM " + table + " WHERE " + condition;
                 try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id);
                      PreparedStatement ps = conn.prepareStatement(sql);
@@ -246,17 +325,10 @@ public class DatenizenTags {
             return null;
         });
 
-        // <--[tag]
-        // @Attribute <db_info[<id>]>
-        // @Returns MapTag
-        // @Group Datenizen
-        // @Description Returns HikariCP pool information.
-        // -->
         TagManager.registerTagHandler(MapTag.class, "db_info", attribute -> {
             if (!attribute.hasParam()) return null;
             String id = attribute.getParam();
             attribute.fulfill(1);
-
             HikariDataSource ds = Datenizen.getInstance().getDatabaseManager().getDataSource(id);
             if (ds != null) {
                 HikariPoolMXBean mxBean = ds.getHikariPoolMXBean();

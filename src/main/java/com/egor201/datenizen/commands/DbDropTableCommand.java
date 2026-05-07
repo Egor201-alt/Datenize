@@ -1,0 +1,64 @@
+package com.egor201.datenizen.commands;
+
+import com.denizenscript.denizencore.exceptions.InvalidArgumentsException;
+import com.denizenscript.denizencore.objects.Argument;
+import com.denizenscript.denizencore.scripts.ScriptEntry;
+import com.denizenscript.denizencore.scripts.commands.AbstractCommand;
+import com.egor201.datenizen.Datenizen;
+import com.egor201.datenizen.events.DbErrorEvent;
+import org.bukkit.Bukkit;
+
+import java.sql.Connection;
+import java.sql.Statement;
+
+public class DbDropTableCommand extends AbstractCommand {
+
+    // <--[command]
+    // @Name db_drop_table
+    // @Syntax db_drop_table [id:<id>] [table:<table>]
+    // @Required 2
+    // @Maximum 2
+    // @Short Drops a table securely.
+    // @Group Datenizen
+    //
+    // @Description
+    // Executes a DROP TABLE IF EXISTS statement asynchronously.
+    // -->
+
+    public DbDropTableCommand() {
+        setName("db_drop_table");
+        setSyntax("db_drop_table[id:<id>] [table:<table>]");
+        setRequiredArguments(2, 2);
+    }
+
+    @Override
+    public void parseArgs(ScriptEntry scriptEntry) throws InvalidArgumentsException {
+        for (Argument arg : scriptEntry) {
+            if (!scriptEntry.hasObject("id") && arg.matchesPrefix("id")) {
+                scriptEntry.addObject("id", arg.asElement());
+            } else if (!scriptEntry.hasObject("table") && arg.matchesPrefix("table")) {
+                scriptEntry.addObject("table", arg.asElement());
+            } else {
+                arg.reportUnhandled();
+            }
+        }
+    }
+
+    @Override
+    public void execute(ScriptEntry scriptEntry) {
+        String id = scriptEntry.getElement("id").asString();
+        String table = scriptEntry.getElement("table").asString();
+
+        Bukkit.getScheduler().runTaskAsynchronously(Datenizen.getInstance(), () -> {
+            String sql = "DROP TABLE IF EXISTS " + table;
+            try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id);
+                 Statement st = conn.createStatement()) {
+                st.executeUpdate(sql);
+            } catch (Exception e) {
+                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> 
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), sql)
+                );
+            }
+        });
+    }
+}
