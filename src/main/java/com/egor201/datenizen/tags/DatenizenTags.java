@@ -18,6 +18,35 @@ import java.sql.ResultSetMetaData;
 
 public class DatenizenTags {
 
+    private static ListTag getResultSetAsList(String id, String sql, ListTag args) {
+        try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id);
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            if (args != null) {
+                for (int i = 0; i < args.size(); i++) ps.setObject(i + 1, args.get(i));
+            }
+
+            try (ResultSet rs = ps.executeQuery()) {
+                ResultSetMetaData meta = rs.getMetaData();
+                int columnCount = meta.getColumnCount();
+                ListTag resultList = new ListTag();
+
+                while (rs.next()) {
+                    MapTag row = new MapTag();
+                    for (int i = 1; i <= columnCount; i++) {
+                        Object val = rs.getObject(i);
+                        row.putObject(meta.getColumnName(i), new ElementTag(val == null ? "null" : val.toString()));
+                    }
+                    resultList.addObject(row);
+                }
+                return resultList;
+            }
+        } catch (Exception e) {
+            Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> DbErrorEvent.instance.fireFor(id, e.getMessage(), sql));
+            return null;
+        }
+    }
+
     public static void register() {
 
         // <--[tag]
@@ -41,32 +70,7 @@ public class DatenizenTags {
                     attribute.fulfill(1);
                 }
 
-                try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id);
-                     PreparedStatement ps = conn.prepareStatement(sql)) {
-
-                    if (args != null) {
-                        for (int i = 0; i < args.size(); i++) ps.setObject(i + 1, args.get(i));
-                    }
-
-                    try (ResultSet rs = ps.executeQuery()) {
-                        ResultSetMetaData meta = rs.getMetaData();
-                        int columnCount = meta.getColumnCount();
-                        ListTag resultList = new ListTag();
-
-                        while (rs.next()) {
-                            MapTag row = new MapTag();
-                            for (int i = 1; i <= columnCount; i++) {
-                                Object val = rs.getObject(i);
-                                row.putObject(meta.getColumnName(i), new ElementTag(val == null ? "null" : val.toString()));
-                            }
-                            resultList.addObject(row);
-                        }
-                        return resultList;
-                    }
-                } catch (Exception e) {
-                    Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> DbErrorEvent.instance.fireFor(id, e.getMessage(), sql));
-                    return null;
-                }
+                return getResultSetAsList(id, sql, args);
             }
             return null;
         });
@@ -75,11 +79,26 @@ public class DatenizenTags {
         // @Attribute <db_rows[<id>].sql[<query>].args[<list>]>
         // @Returns ListTag
         // @Group Datenizen
-        // @Description Alias for db_query.
+        // @Description Alias for db_query. Returns a list of maps.
         // -->
         TagManager.registerTagHandler(ListTag.class, "db_rows", attribute -> {
-            // Re-uses db_query behavior
-            return TagManager.tagObject("db_query" + attribute.getRawContext(), attribute.context).asType(ListTag.class, attribute.context);
+            if (!attribute.hasParam()) return null;
+            String id = attribute.getParam();
+            attribute.fulfill(1);
+
+            if (attribute.startsWith("sql") && attribute.hasParam()) {
+                String sql = attribute.getParam();
+                attribute.fulfill(1);
+
+                ListTag args = null;
+                if (attribute.startsWith("args") && attribute.hasParam()) {
+                    args = attribute.contextAsType(1, ListTag.class);
+                    attribute.fulfill(1);
+                }
+
+                return getResultSetAsList(id, sql, args);
+            }
+            return null;
         });
 
         // <--[tag]
