@@ -34,7 +34,7 @@ public class DbExecuteBatchCommand extends AbstractCommand {
     public DbExecuteBatchCommand() {
         setName("db_execute_batch");
         setSyntax("db_execute_batch [id:<id>] [sql:<query>][args:<list_of_lists>] (label:<label>)");
-        setRequiredArguments(3, 4);
+        setRequiredArguments(3, 99);
     }
 
     @Override

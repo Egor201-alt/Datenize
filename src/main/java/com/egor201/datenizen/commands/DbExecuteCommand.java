@@ -39,7 +39,7 @@ public class DbExecuteCommand extends AbstractCommand {
     public DbExecuteCommand() {
         setName("db_execute");
         setSyntax("db_execute [id:<id>] [sql:<query>] (args:<list>) (tx:<tx_id>) (label:<label>)");
-        setRequiredArguments(2, 5);
+        setRequiredArguments(2, 99);
     }
 
     @Override
