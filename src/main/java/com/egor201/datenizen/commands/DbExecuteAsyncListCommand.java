@@ -10,7 +10,7 @@ import com.egor201.datenizen.events.DbErrorEvent;
 import org.bukkit.Bukkit;
 
 import java.sql.Connection;
-import java.sql.Statement;
+import java.sql.PreparedStatement;
 
 public class DbExecuteAsyncListCommand extends AbstractCommand {
 
@@ -19,16 +19,18 @@ public class DbExecuteAsyncListCommand extends AbstractCommand {
     // @Syntax db_execute_async_list [id:<id>] [sql:<list>]
     // @Required 2
     // @Maximum 2
-    // @Short Executes a list of SQL queries asynchronously.
+    // @Short Executes a list of parameterized SQL queries asynchronously.
     // @Group Datenizen
     //
     // @Description
-    // Runs multiple raw SQL statements sequentially in a single async task using batch execution.
+    // Runs multiple SQL statements sequentially in a single async task.
+    // Each entry in the list is treated as a separate PreparedStatement to prevent SQL injection.
+    // Statements are executed inside a transaction and rolled back on failure.
     // -->
 
     public DbExecuteAsyncListCommand() {
         setName("db_execute_async_list");
-        setSyntax("db_execute_async_list[id:<id>] [sql:<list>]");
+        setSyntax("db_execute_async_list [id:<id>] [sql:<list>]");
         setRequiredArguments(2, 2);
     }
 
@@ -43,6 +45,9 @@ public class DbExecuteAsyncListCommand extends AbstractCommand {
                 arg.reportUnhandled();
             }
         }
+        if (!scriptEntry.hasObject("id") || !scriptEntry.hasObject("sql")) {
+            throw new InvalidArgumentsException("Must specify id and sql!");
+        }
     }
 
     @Override
@@ -50,19 +55,38 @@ public class DbExecuteAsyncListCommand extends AbstractCommand {
         String id = scriptEntry.getElement("id").asString();
         ListTag sqlList = scriptEntry.getObjectTag("sql");
 
+        if (sqlList == null || sqlList.isEmpty()) return;
+
         Bukkit.getScheduler().runTaskAsynchronously(Datenizen.getInstance(), () -> {
-            try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id);
-                 Statement st = conn.createStatement()) {
-                
+            Connection conn = null;
+            try {
+                conn = Datenizen.getInstance().getDatabaseManager().getConnection(id);
+                conn.setAutoCommit(false);
+
                 for (String sql : sqlList) {
-                    st.addBatch(sql);
+                    try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                        ps.executeUpdate();
+                    }
                 }
-                st.executeBatch();
+
+                conn.commit();
             } catch (Exception e) {
                 e.printStackTrace();
-                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> 
-                    DbErrorEvent.instance.fireFor(id, e.getMessage(), "ASYNC LIST BATCH")
+                if (conn != null) {
+                    try {
+                        conn.rollback();
+                    } catch (Exception ignored) {}
+                }
+                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), "ASYNC LIST")
                 );
+            } finally {
+                if (conn != null) {
+                    try {
+                        conn.setAutoCommit(true);
+                        conn.close();
+                    } catch (Exception ignored) {}
+                }
             }
         });
     }
