@@ -10,7 +10,7 @@ import org.bukkit.Bukkit;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class DatabaseManager {
@@ -19,6 +19,7 @@ public class DatabaseManager {
     private final Map<String, Connection> activeTransactions;
     private final Map<String, Long> transactionStartTimes;
     private final Map<String, String> transactionDbIds;
+    private final List<String> allowedDrivers = Arrays.asList("org.sqlite.JDBC", "com.mysql.cj.jdbc.Driver", "org.postgresql.Driver", "org.mariadb.jdbc.Driver");
 
     public DatabaseManager() {
         this.connectionPools = new ConcurrentHashMap<>();
@@ -28,25 +29,32 @@ public class DatabaseManager {
 
         Bukkit.getScheduler().runTaskTimerAsynchronously(Datenizen.getInstance(), () -> {
             long now = System.currentTimeMillis();
+            List<String> expiredTxs = new ArrayList<>();
+            
             for (Map.Entry<String, Long> entry : transactionStartTimes.entrySet()) {
                 if (now - entry.getValue() > 300000) { 
-                    String txId = entry.getKey();
-                    String dbId = transactionDbIds.get(txId);
-                    
-                    Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> 
-                        DbTransactionExpiredEvent.instance.fireFor(txId, dbId)
-                    );
-                    
-                    try {
-                        rollbackTransaction(txId);
-                    } catch (SQLException ignored) {}
+                    expiredTxs.add(entry.getKey());
                 }
+            }
+            
+            for (String txId : expiredTxs) {
+                String dbId = transactionDbIds.get(txId);
+                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> 
+                    DbTransactionExpiredEvent.instance.fireFor(txId, dbId)
+                );
+                try { rollbackTransaction(txId); } catch (SQLException ignored) {}
             }
         }, 1200L, 1200L); 
     }
 
     public boolean connect(String id, String driver, String url, String user, String password) {
         if (connectionPools.containsKey(id)) return false;
+
+        if (!allowedDrivers.contains(driver)) {
+            Bukkit.getLogger().severe("[Datenizen] Blocked connection attempt with unapproved driver: " + driver);
+            return false;
+        }
+
         try {
             HikariConfig config = new HikariConfig();
             config.setDriverClassName(driver);
@@ -59,9 +67,14 @@ public class DatabaseManager {
             config.setIdleTimeout(600000);
             config.setPoolName("Datenizen-" + id);
 
-            HikariDataSource dataSource = new HikariDataSource(config);
-            connectionPools.put(id, dataSource);
-            return true;
+            try {
+                HikariDataSource dataSource = new HikariDataSource(config);
+                connectionPools.put(id, dataSource);
+                return true;
+            } catch (Exception poolException) {
+                Bukkit.getLogger().severe("[Datenizen] Failed to connect to database '" + id + "'. Please check your credentials and URL.");
+                return false;
+            }
         } catch (Exception e) {
             e.printStackTrace();
             return false;
@@ -69,6 +82,14 @@ public class DatabaseManager {
     }
 
     public boolean disconnect(String id) {
+        List<String> txToRollback = new ArrayList<>();
+        for (Map.Entry<String, String> entry : transactionDbIds.entrySet()) {
+            if (entry.getValue().equals(id)) txToRollback.add(entry.getKey());
+        }
+        for (String tx : txToRollback) {
+            try { rollbackTransaction(tx); } catch (SQLException ignored) {}
+        }
+
         HikariDataSource ds = connectionPools.remove(id);
         if (ds != null && !ds.isClosed()) {
             ds.close();
@@ -97,6 +118,10 @@ public class DatabaseManager {
         if (url.contains("sqlite")) return "sqlite";
         if (url.contains("postgresql")) return "postgresql";
         return "mysql";
+    }
+
+    public Set<String> getActiveIds() {
+        return connectionPools.keySet();
     }
 
     public boolean startTransaction(String txId, String dbId) throws SQLException {

@@ -2,6 +2,7 @@ package com.egor201.datenizen.commands;
 
 import com.denizenscript.denizencore.exceptions.InvalidArgumentsException;
 import com.denizenscript.denizencore.objects.Argument;
+import com.denizenscript.denizencore.objects.core.ElementTag;
 import com.denizenscript.denizencore.objects.core.ListTag;
 import com.denizenscript.denizencore.scripts.ScriptEntry;
 import com.denizenscript.denizencore.scripts.commands.AbstractCommand;
@@ -24,7 +25,7 @@ public class DbExportCsvCommand extends AbstractCommand {
 
     // <--[command]
     // @Name db_export_csv
-    // @Syntax db_export_csv [id:<id>] [sql:<query>] [path:<path>] (args:<list>)
+    // @Syntax db_export_csv [id:<id>] [sql:<query>][path:<path>] (args:<list>)
     // @Required 3
     // @Maximum 4
     // @Short Exports a query result to a CSV file.
@@ -42,21 +43,34 @@ public class DbExportCsvCommand extends AbstractCommand {
     }
 
     @Override
-    public void parseArgs(ScriptEntry se) throws InvalidArgumentsException {
-        for (Argument arg : se) {
-            if (!se.hasObject("id") && arg.matchesPrefix("id")) {
-                se.addObject("id", arg.asElement());
-            } else if (!se.hasObject("sql") && arg.matchesPrefix("sql")) {
-                se.addObject("sql", arg.asElement());
-            } else if (!se.hasObject("path") && arg.matchesPrefix("path")) {
-                se.addObject("path", arg.asElement());
-            } else if (!se.hasObject("args") && arg.matchesPrefix("args")) {
-                se.addObject("args", arg.asType(ListTag.class));
+    public void parseArgs(ScriptEntry scriptEntry) throws InvalidArgumentsException {
+        for (Argument arg : scriptEntry) {
+            if (!scriptEntry.hasObject("id") && arg.matchesPrefix("id")) {
+                scriptEntry.addObject("id", arg.asElement());
+            } else if (!scriptEntry.hasObject("path") && arg.matchesPrefix("path")) {
+                scriptEntry.addObject("path", arg.asElement());
+            } else if (!scriptEntry.hasObject("args") && arg.matchesPrefix("args")) {
+                scriptEntry.addObject("args", arg.asType(ListTag.class));
+            } else if (!scriptEntry.hasObject("sql")) {
+                if (arg.matchesPrefix("sql")) {
+                    scriptEntry.addObject("sql", arg.asElement());
+                } else {
+                    String raw = arg.getRawValue();
+                    if (raw.startsWith("sql:")) {
+                        scriptEntry.addObject("sql", new ElementTag(raw.substring(4)));
+                    } else if (raw.startsWith("\"sql:") && raw.endsWith("\"")) {
+                        scriptEntry.addObject("sql", new ElementTag(raw.substring(5, raw.length() - 1)));
+                    } else if (raw.startsWith("'sql:") && raw.endsWith("'")) {
+                        scriptEntry.addObject("sql", new ElementTag(raw.substring(5, raw.length() - 1)));
+                    } else {
+                        arg.reportUnhandled();
+                    }
+                }
             } else {
                 arg.reportUnhandled();
             }
         }
-        if (!se.hasObject("id") || !se.hasObject("sql") || !se.hasObject("path")) {
+        if (!scriptEntry.hasObject("id") || !scriptEntry.hasObject("sql") || !scriptEntry.hasObject("path")) {
             throw new InvalidArgumentsException("Must specify id, sql, and path!");
         }
     }

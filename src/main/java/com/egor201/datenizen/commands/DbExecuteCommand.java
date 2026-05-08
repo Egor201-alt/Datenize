@@ -47,14 +47,27 @@ public class DbExecuteCommand extends AbstractCommand {
         for (Argument arg : scriptEntry) {
             if (!scriptEntry.hasObject("id") && arg.matchesPrefix("id")) {
                 scriptEntry.addObject("id", arg.asElement());
-            } else if (!scriptEntry.hasObject("sql") && arg.matchesPrefix("sql")) {
-                scriptEntry.addObject("sql", arg.asElement());
             } else if (!scriptEntry.hasObject("args") && arg.matchesPrefix("args")) {
                 scriptEntry.addObject("args", arg.asType(ListTag.class));
             } else if (!scriptEntry.hasObject("tx") && arg.matchesPrefix("tx")) {
                 scriptEntry.addObject("tx", arg.asElement());
             } else if (!scriptEntry.hasObject("label") && arg.matchesPrefix("label")) {
                 scriptEntry.addObject("label", arg.asElement());
+            } else if (!scriptEntry.hasObject("sql")) {
+                if (arg.matchesPrefix("sql")) {
+                    scriptEntry.addObject("sql", arg.asElement());
+                } else {
+                    String raw = arg.getRawValue();
+                    if (raw.startsWith("sql:")) {
+                        scriptEntry.addObject("sql", new ElementTag(raw.substring(4)));
+                    } else if (raw.startsWith("\"sql:") && raw.endsWith("\"")) {
+                        scriptEntry.addObject("sql", new ElementTag(raw.substring(5, raw.length() - 1)));
+                    } else if (raw.startsWith("'sql:") && raw.endsWith("'")) {
+                        scriptEntry.addObject("sql", new ElementTag(raw.substring(5, raw.length() - 1)));
+                    } else {
+                        arg.reportUnhandled();
+                    }
+                }
             } else {
                 arg.reportUnhandled();
             }

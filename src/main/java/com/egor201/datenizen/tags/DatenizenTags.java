@@ -372,5 +372,45 @@ public class DatenizenTags {
             }
             return null;
         });
+
+        // <--[tag]
+        // @Attribute <db_list>
+        // @Returns ListTag
+        // @Group Datenizen
+        // @Description Returns a list of all active database connection IDs.
+        // -->
+        TagManager.registerTagHandler(ListTag.class, "db_list", attribute -> {
+            ListTag list = new ListTag();
+            list.addAll(Datenizen.getInstance().getDatabaseManager().getActiveIds());
+            return list;
+        });
+
+        // <--[tag]
+        // @Attribute <db_table_exists[<id>|<table_name>]>
+        // @Returns ElementTag(Boolean)
+        // @Group Datenizen
+        // @Description Cleaner way to check if a table exists without using nested tags.
+        // -->
+        TagManager.registerTagHandler(ElementTag.class, "db_table_exists", attribute -> {
+            if (!attribute.hasParam()) return null;
+            String param = attribute.getParam();
+            
+            if (param.contains("|")) {
+                String[] parts = param.split("\\|", 2);
+                String id = parts[0];
+                String table = parts[1];
+                attribute.fulfill(1);
+                
+                try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id)) {
+                    DatabaseMetaData meta = conn.getMetaData();
+                    try (ResultSet rs = meta.getTables(null, null, table, null)) {
+                        return new ElementTag(rs.next());
+                    }
+                } catch (Exception e) {
+                    Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> DbErrorEvent.instance.fireFor(id, e.getMessage(), "CHECK TABLE EXISTS"));
+                }
+            }
+            return new ElementTag(false);
+        });
     }
 }

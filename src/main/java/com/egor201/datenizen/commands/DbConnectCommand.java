@@ -7,12 +7,14 @@ import com.denizenscript.denizencore.scripts.ScriptEntry;
 import com.denizenscript.denizencore.scripts.commands.AbstractCommand;
 import com.egor201.datenizen.Datenizen;
 import com.egor201.datenizen.events.DbConnectedEvent;
+import com.egor201.datenizen.events.DbErrorEvent;
+import org.bukkit.Bukkit;
 
 public class DbConnectCommand extends AbstractCommand {
 
     // <--[command]
     // @Name db_connect
-    // @Syntax db_connect [id:<id>] [driver:<driver>][url:<url>] (user:<user>) (pass:<pass>)
+    // @Syntax db_connect[id:<id>] [driver:<driver>][url:<url>] (user:<user>) (pass:<pass>)
     // @Required 3
     // @Maximum 5
     // @Short Connects to a database using HikariCP connection pooling.
@@ -20,7 +22,7 @@ public class DbConnectCommand extends AbstractCommand {
     //
     // @Description
     // Connects to a database and stores the connection pool under the specified ID.
-    // Supported drivers include org.sqlite.JDBC, com.mysql.cj.jdbc.Driver, org.postgresql.Driver.
+    // Supported drivers include org.sqlite.JDBC, com.mysql.cj.jdbc.Driver, org.postgresql.Driver, org.mariadb.jdbc.Driver.
     //
     // @Usage
     // Use to connect to an SQLite database.
@@ -33,7 +35,7 @@ public class DbConnectCommand extends AbstractCommand {
 
     public DbConnectCommand() {
         setName("db_connect");
-        setSyntax("db_connect [id:<id>] [driver:<driver>][url:<url>] (user:<user>) (pass:<pass>)");
+        setSyntax("db_connect[id:<id>] [driver:<driver>][url:<url>] (user:<user>) (pass:<pass>)");
         setRequiredArguments(3, 5);
     }
 
@@ -70,10 +72,16 @@ public class DbConnectCommand extends AbstractCommand {
         String u = user != null ? user.asString() : "";
         String p = pass != null ? pass.asString() : "";
 
-        boolean success = Datenizen.getInstance().getDatabaseManager().connect(id.asString(), driver.asString(), url.asString(), u, p);
+        Bukkit.getScheduler().runTaskAsynchronously(Datenizen.getInstance(), () -> {
+            boolean success = Datenizen.getInstance().getDatabaseManager().connect(id.asString(), driver.asString(), url.asString(), u, p);
 
-        if (success) {
-            DbConnectedEvent.instance.fireFor(id.asString());
-        }
+            Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> {
+                if (success) {
+                    DbConnectedEvent.instance.fireFor(id.asString());
+                } else {
+                    DbErrorEvent.instance.fireFor(id.asString(), "Connection failed or driver blocked.", "db_connect");
+                }
+            });
+        });
     }
 }
