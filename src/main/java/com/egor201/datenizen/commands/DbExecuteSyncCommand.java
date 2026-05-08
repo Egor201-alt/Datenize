@@ -34,6 +34,7 @@ public class DbExecuteSyncCommand extends AbstractCommand {
 
     @Override
     public void parseArgs(ScriptEntry scriptEntry) throws InvalidArgumentsException {
+        StringBuilder sqlBuilder = new StringBuilder();
         for (Argument arg : scriptEntry) {
             if (!scriptEntry.hasObject("id") && arg.matchesPrefix("id")) {
                 scriptEntry.addObject("id", arg.asElement());
@@ -41,24 +42,18 @@ public class DbExecuteSyncCommand extends AbstractCommand {
                 scriptEntry.addObject("args", arg.asType(ListTag.class));
             } else if (!scriptEntry.hasObject("tx") && arg.matchesPrefix("tx")) {
                 scriptEntry.addObject("tx", arg.asElement());
-            } else if (!scriptEntry.hasObject("sql")) {
-                if (arg.matchesPrefix("sql")) {
-                    scriptEntry.addObject("sql", arg.asElement());
-                } else {
-                    String raw = arg.getRawValue();
-                    if (raw.startsWith("sql:")) {
-                        scriptEntry.addObject("sql", new ElementTag(raw.substring(4)));
-                    } else if (raw.startsWith("\"sql:") && raw.endsWith("\"")) {
-                        scriptEntry.addObject("sql", new ElementTag(raw.substring(5, raw.length() - 1)));
-                    } else if (raw.startsWith("'sql:") && raw.endsWith("'")) {
-                        scriptEntry.addObject("sql", new ElementTag(raw.substring(5, raw.length() - 1)));
-                    } else {
-                        arg.reportUnhandled();
-                    }
-                }
+            } else if (arg.matchesPrefix("sql")) {
+                sqlBuilder.append(arg.getValue());
+            } else if (!arg.hasPrefix() && sqlBuilder.length() > 0) {
+                sqlBuilder.append(" ").append(arg.getRawValue());
+            } else if (!scriptEntry.hasObject("sql") && arg.getRawValue().startsWith("sql:")) {
+                sqlBuilder.append(arg.getRawValue().substring(4));
             } else {
                 arg.reportUnhandled();
             }
+        }
+        if (sqlBuilder.length() > 0) {
+            scriptEntry.addObject("sql", new ElementTag(sqlBuilder.toString().trim()));
         }
         if (!scriptEntry.hasObject("id") || !scriptEntry.hasObject("sql")) {
             throw new InvalidArgumentsException("Must specify id and sql!");
