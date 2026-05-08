@@ -41,6 +41,9 @@ public final class Datenizen extends JavaPlugin {
         DenizenCore.commandRegistry.registerCommand(DbCleanPoolCommand.class);
         DenizenCore.commandRegistry.registerCommand(DbAnalyzeCommand.class);
         DenizenCore.commandRegistry.registerCommand(DbTimeoutCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbTableInsertCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbTableDeleteCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbTableUpdateCommand.class);
 
         ScriptEvent.registerScriptEvent(new DbConnectedEvent());
         ScriptEvent.registerScriptEvent(new DbDisconnectedEvent());
@@ -48,6 +51,7 @@ public final class Datenizen extends JavaPlugin {
         ScriptEvent.registerScriptEvent(new DbTransactionExpiredEvent());
         ScriptEvent.registerScriptEvent(new DbCsvImportedEvent());
         ScriptEvent.registerScriptEvent(new DbCsvExportedEvent());
+        ScriptEvent.registerScriptEvent(new DbExecutedEvent());
 
         DatenizenTags.register();
     }
