@@ -5,7 +5,9 @@ import com.denizenscript.denizencore.objects.Argument;
 import com.denizenscript.denizencore.scripts.ScriptEntry;
 import com.denizenscript.denizencore.scripts.commands.AbstractCommand;
 import com.egor201.datenizen.Datenizen;
+import com.egor201.datenizen.events.DbErrorEvent;
 import com.zaxxer.hikari.HikariDataSource;
+import org.bukkit.Bukkit;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -18,11 +20,11 @@ public class DbBackupCommand extends AbstractCommand {
     // @Syntax db_backup [id:<id>] [path:<path>]
     // @Required 2
     // @Maximum 2
-    // @Short Backups an SQLite database.
+    // @Short Backups an SQLite database asynchronously.
     // @Group Datenizen
     //
     // @Description
-    // Copies the SQLite file to a new location.
+    // Copies the SQLite file to a new location asynchronously.
     // -->
 
     public DbBackupCommand() {
@@ -42,6 +44,9 @@ public class DbBackupCommand extends AbstractCommand {
                 arg.reportUnhandled();
             }
         }
+        if (!scriptEntry.hasObject("id") || !scriptEntry.hasObject("path")) {
+            throw new InvalidArgumentsException("Must specify id and path!");
+        }
     }
 
     @Override
@@ -53,20 +58,26 @@ public class DbBackupCommand extends AbstractCommand {
         if (ds == null) return;
 
         String url = ds.getJdbcUrl();
-        if (url.startsWith("jdbc:sqlite:")) {
+        if (!url.startsWith("jdbc:sqlite:")) return;
+
+        String sourceFile = url.replace("jdbc:sqlite:", "");
+
+        Bukkit.getScheduler().runTaskAsynchronously(Datenizen.getInstance(), () -> {
             try {
-                String sourceFile = url.replace("jdbc:sqlite:", "");
                 File source = new File(sourceFile);
                 File target = new File(path);
-                
+
                 if (target.getParentFile() != null) {
                     target.getParentFile().mkdirs();
                 }
-                
+
                 Files.copy(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
             } catch (Exception e) {
                 e.printStackTrace();
+                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), "db_backup")
+                );
             }
-        }
+        });
     }
 }
