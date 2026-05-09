@@ -26,46 +26,43 @@ public class DbExecuteCommand extends AbstractCommand {
     //
     // @Description
     // Executes a query asynchronously.
+    // The sql argument supports both prefixed and quoted forms:
+    //   sql:UPDATE players SET coins=? WHERE uuid=?
+    //   "sql:UPDATE players SET coins=? WHERE uuid=?"
     // Use 'tx' to execute within a specific transaction started by db_transaction.
     // Use 'label' to identify the operation in the 'db executed' event via <context.label>.
+    // Fires 'db executed' on success with <context.affected_rows>.
     //
     // @Usage
-    // Use to insert a player record and react to completion.
-    // - db_execute id:main sql:"INSERT INTO players (name) VALUES (?)" args:<[player_name]> label:player_insert
-    // - on db executed label:player_insert:
-    //   - narrate "Inserted <context.affected_rows> row(s)."
+    // - db_execute id:main sql:INSERT INTO players (name) VALUES (?) args:<list[<player.name>]> label:insert_player
+    // - db_execute id:main "sql:UPDATE players SET coins = coins - ? WHERE uuid = ?" args:<list[<[amount]>|<player.uuid>]>
     // -->
 
     public DbExecuteCommand() {
         setName("db_execute");
         setSyntax("db_execute [id:<id>] [sql:<query>] (args:<list>) (tx:<tx_id>) (label:<label>)");
-        setRequiredArguments(2, 99);
+        setRequiredArguments(2, 5);
     }
 
     @Override
     public void parseArgs(ScriptEntry scriptEntry) throws InvalidArgumentsException {
-        StringBuilder sqlBuilder = new StringBuilder();
         for (Argument arg : scriptEntry) {
             if (!scriptEntry.hasObject("id") && arg.matchesPrefix("id")) {
                 scriptEntry.addObject("id", arg.asElement());
+            } else if (!scriptEntry.hasObject("sql") && arg.matchesPrefix("sql")) {
+                scriptEntry.addObject("sql", arg.asElement());
+            } else if (!scriptEntry.hasObject("sql") && !arg.hasPrefix()
+                    && arg.getValue().startsWith("sql:")) {
+                scriptEntry.addObject("sql", new ElementTag(arg.getValue().substring(4)));
             } else if (!scriptEntry.hasObject("args") && arg.matchesPrefix("args")) {
                 scriptEntry.addObject("args", arg.asType(ListTag.class));
             } else if (!scriptEntry.hasObject("tx") && arg.matchesPrefix("tx")) {
                 scriptEntry.addObject("tx", arg.asElement());
             } else if (!scriptEntry.hasObject("label") && arg.matchesPrefix("label")) {
                 scriptEntry.addObject("label", arg.asElement());
-            } else if (arg.matchesPrefix("sql")) {
-                sqlBuilder.append(arg.getValue());
-            } else if (!arg.hasPrefix() && sqlBuilder.length() > 0) {
-                sqlBuilder.append(" ").append(arg.getRawValue());
-            } else if (!scriptEntry.hasObject("sql") && arg.getRawValue().startsWith("sql:")) {
-                sqlBuilder.append(arg.getRawValue().substring(4));
             } else {
                 arg.reportUnhandled();
             }
-        }
-        if (sqlBuilder.length() > 0) {
-            scriptEntry.addObject("sql", new ElementTag(sqlBuilder.toString().trim()));
         }
         if (!scriptEntry.hasObject("id") || !scriptEntry.hasObject("sql")) {
             throw new InvalidArgumentsException("Must specify id and sql!");
@@ -90,7 +87,7 @@ public class DbExecuteCommand extends AbstractCommand {
                         ? Datenizen.getInstance().getDatabaseManager().getTransactionConnection(txId)
                         : Datenizen.getInstance().getDatabaseManager().getConnection(id);
 
-                if (conn == null) throw new Exception("Connection not found!");
+                if (conn == null) throw new Exception("Connection not found for id: " + id);
 
                 ps = conn.prepareStatement(sql);
                 if (args != null) {
@@ -99,9 +96,8 @@ public class DbExecuteCommand extends AbstractCommand {
                     }
                 }
                 int affected = ps.executeUpdate();
-                final int finalAffected = affected;
                 Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                    DbExecutedEvent.instance.fireFor(id, label, finalAffected)
+                    DbExecutedEvent.instance.fireFor(id, label, affected)
                 );
             } catch (Exception e) {
                 e.printStackTrace();

@@ -19,6 +19,7 @@ public final class Datenizen extends JavaPlugin {
         instance = this;
 
         if (Bukkit.getPluginManager().getPlugin("Denizen") == null) {
+            getLogger().severe("Denizen not found! Disabling Datenizen.");
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
@@ -29,32 +30,34 @@ public final class Datenizen extends JavaPlugin {
         DenizenCore.commandRegistry.registerCommand(DbDisconnectCommand.class);
         DenizenCore.commandRegistry.registerCommand(DbExecuteCommand.class);
         DenizenCore.commandRegistry.registerCommand(DbExecuteSyncCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbExecuteAsyncListCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbExecuteBatchCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbExecuteScriptCommand.class);
         DenizenCore.commandRegistry.registerCommand(DbTransactionCommand.class);
         DenizenCore.commandRegistry.registerCommand(DbBackupCommand.class);
         DenizenCore.commandRegistry.registerCommand(DbImportCsvCommand.class);
         DenizenCore.commandRegistry.registerCommand(DbExportCsvCommand.class);
-        DenizenCore.commandRegistry.registerCommand(DbExecuteAsyncListCommand.class);
-        DenizenCore.commandRegistry.registerCommand(DbExecuteBatchCommand.class);
-        DenizenCore.commandRegistry.registerCommand(DbSetPoolSizeCommand.class);
         DenizenCore.commandRegistry.registerCommand(DbDropTableCommand.class);
-        DenizenCore.commandRegistry.registerCommand(DbExecuteScriptCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbTableCreateCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbTableInsertCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbTableUpdateCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbTableDeleteCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbSetPoolSizeCommand.class);
+        DenizenCore.commandRegistry.registerCommand(DbTimeoutCommand.class);
         DenizenCore.commandRegistry.registerCommand(DbCleanPoolCommand.class);
         DenizenCore.commandRegistry.registerCommand(DbAnalyzeCommand.class);
-        DenizenCore.commandRegistry.registerCommand(DbTimeoutCommand.class);
-        DenizenCore.commandRegistry.registerCommand(DbTableInsertCommand.class);
-        DenizenCore.commandRegistry.registerCommand(DbTableDeleteCommand.class);
-        DenizenCore.commandRegistry.registerCommand(DbTableUpdateCommand.class);
 
         ScriptEvent.registerScriptEvent(new DbConnectedEvent());
         ScriptEvent.registerScriptEvent(new DbDisconnectedEvent());
         ScriptEvent.registerScriptEvent(new DbErrorEvent());
+        ScriptEvent.registerScriptEvent(new DbExecutedEvent());
         ScriptEvent.registerScriptEvent(new DbTransactionExpiredEvent());
-        ScriptEvent.registerScriptEvent(new DbConnectionLeakedEvent());
         ScriptEvent.registerScriptEvent(new DbCsvImportedEvent());
         ScriptEvent.registerScriptEvent(new DbCsvExportedEvent());
-        ScriptEvent.registerScriptEvent(new DbExecutedEvent());
 
         DatenizenTags.register();
+
+        getLogger().info("Datenizen enabled successfully.");
     }
 
     @Override
@@ -62,6 +65,7 @@ public final class Datenizen extends JavaPlugin {
         if (databaseManager != null) {
             databaseManager.closeAllConnections();
         }
+        getLogger().info("Datenizen disabled. All connections closed.");
     }
 
     public static Datenizen getInstance() {

@@ -25,7 +25,7 @@ public class DbExportCsvCommand extends AbstractCommand {
 
     // <--[command]
     // @Name db_export_csv
-    // @Syntax db_export_csv [id:<id>] [sql:<query>][path:<path>] (args:<list>)
+    // @Syntax db_export_csv [id:<id>] [sql:<query>] [path:<path>] (args:<list>)
     // @Required 3
     // @Maximum 4
     // @Short Exports a query result to a CSV file.
@@ -34,6 +34,9 @@ public class DbExportCsvCommand extends AbstractCommand {
     // @Description
     // Runs a SELECT query asynchronously and writes the result to a CSV file.
     // Values containing commas, quotes, or newlines are properly escaped per RFC 4180.
+    // The sql argument supports both prefixed and quoted forms:
+    //   sql:SELECT * FROM players
+    //   "sql:SELECT * FROM players WHERE active = ?"
     // -->
 
     public DbExportCsvCommand() {
@@ -43,29 +46,24 @@ public class DbExportCsvCommand extends AbstractCommand {
     }
 
     @Override
-    public void parseArgs(ScriptEntry scriptEntry) throws InvalidArgumentsException {
-        StringBuilder sqlBuilder = new StringBuilder();
-        for (Argument arg : scriptEntry) {
-            if (!scriptEntry.hasObject("id") && arg.matchesPrefix("id")) {
-                scriptEntry.addObject("id", arg.asElement());
-            } else if (!scriptEntry.hasObject("path") && arg.matchesPrefix("path")) {
-                scriptEntry.addObject("path", arg.asElement());
-            } else if (!scriptEntry.hasObject("args") && arg.matchesPrefix("args")) {
-                scriptEntry.addObject("args", arg.asType(ListTag.class));
-            } else if (arg.matchesPrefix("sql")) {
-                sqlBuilder.append(arg.getValue());
-            } else if (!arg.hasPrefix() && sqlBuilder.length() > 0) {
-                sqlBuilder.append(" ").append(arg.getRawValue());
-            } else if (!scriptEntry.hasObject("sql") && arg.getRawValue().startsWith("sql:")) {
-                sqlBuilder.append(arg.getRawValue().substring(4));
+    public void parseArgs(ScriptEntry se) throws InvalidArgumentsException {
+        for (Argument arg : se) {
+            if (!se.hasObject("id") && arg.matchesPrefix("id")) {
+                se.addObject("id", arg.asElement());
+            } else if (!se.hasObject("sql") && arg.matchesPrefix("sql")) {
+                se.addObject("sql", arg.asElement());
+            } else if (!se.hasObject("sql") && !arg.hasPrefix()
+                    && arg.getValue().startsWith("sql:")) {
+                se.addObject("sql", new ElementTag(arg.getValue().substring(4)));
+            } else if (!se.hasObject("path") && arg.matchesPrefix("path")) {
+                se.addObject("path", arg.asElement());
+            } else if (!se.hasObject("args") && arg.matchesPrefix("args")) {
+                se.addObject("args", arg.asType(ListTag.class));
             } else {
                 arg.reportUnhandled();
             }
         }
-        if (sqlBuilder.length() > 0) {
-            scriptEntry.addObject("sql", new ElementTag(sqlBuilder.toString().trim()));
-        }
-        if (!scriptEntry.hasObject("id") || !scriptEntry.hasObject("sql") || !scriptEntry.hasObject("path")) {
+        if (!se.hasObject("id") || !se.hasObject("sql") || !se.hasObject("path")) {
             throw new InvalidArgumentsException("Must specify id, sql, and path!");
         }
     }

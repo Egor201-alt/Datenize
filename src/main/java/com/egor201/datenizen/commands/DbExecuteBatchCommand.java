@@ -18,47 +18,48 @@ public class DbExecuteBatchCommand extends AbstractCommand {
 
     // <--[command]
     // @Name db_execute_batch
-    // @Syntax db_execute_batch[id:<id>] [sql:<query>] [args:<list_of_lists>] (label:<label>)
+    // @Syntax db_execute_batch [id:<id>] [sql:<query>] [args:<list_of_lists>] (label:<label>)
     // @Required 3
     // @Maximum 4
-    // @Short Executes a parameterized SQL query multiple times efficiently.
+    // @Short Executes a parameterized SQL query multiple times efficiently using JDBC batching.
     // @Group Datenizen
     //
     // @Description
-    // Uses JDBC batching to insert or update multiple rows in a single operation.
+    // Uses JDBC batching inside a transaction to insert or update multiple rows in one operation.
     // Provide a ListTag where each element is a ListTag of arguments for one row.
-    // Statements are executed inside a transaction and rolled back on failure.
-    // Fires 'db executed' on success with <context.affected_rows>.
+    // If any row fails the entire batch is rolled back.
+    // The sql argument supports both prefixed and quoted forms:
+    //   sql:INSERT INTO t (a,b) VALUES (?,?)
+    //   "sql:INSERT INTO t (a,b) VALUES (?,?)"
+    // Fires 'db executed' on success with <context.affected_rows> as total rows affected.
+    //
+    // @Usage
+    // - db_execute_batch id:main "sql:INSERT INTO players (name, uuid) VALUES (?, ?)" args:<list[<list[Steve|uuid1]>|<list[Alex|uuid2]>]> label:bulk_insert
     // -->
 
     public DbExecuteBatchCommand() {
         setName("db_execute_batch");
-        setSyntax("db_execute_batch [id:<id>] [sql:<query>][args:<list_of_lists>] (label:<label>)");
-        setRequiredArguments(3, 99);
+        setSyntax("db_execute_batch [id:<id>] [sql:<query>] [args:<list_of_lists>] (label:<label>)");
+        setRequiredArguments(3, 4);
     }
 
     @Override
     public void parseArgs(ScriptEntry scriptEntry) throws InvalidArgumentsException {
-        StringBuilder sqlBuilder = new StringBuilder();
         for (Argument arg : scriptEntry) {
             if (!scriptEntry.hasObject("id") && arg.matchesPrefix("id")) {
                 scriptEntry.addObject("id", arg.asElement());
+            } else if (!scriptEntry.hasObject("sql") && arg.matchesPrefix("sql")) {
+                scriptEntry.addObject("sql", arg.asElement());
+            } else if (!scriptEntry.hasObject("sql") && !arg.hasPrefix()
+                    && arg.getValue().startsWith("sql:")) {
+                scriptEntry.addObject("sql", new ElementTag(arg.getValue().substring(4)));
             } else if (!scriptEntry.hasObject("args") && arg.matchesPrefix("args")) {
                 scriptEntry.addObject("args", arg.asType(ListTag.class));
             } else if (!scriptEntry.hasObject("label") && arg.matchesPrefix("label")) {
                 scriptEntry.addObject("label", arg.asElement());
-            } else if (arg.matchesPrefix("sql")) {
-                sqlBuilder.append(arg.getValue());
-            } else if (!arg.hasPrefix() && sqlBuilder.length() > 0) {
-                sqlBuilder.append(" ").append(arg.getRawValue());
-            } else if (!scriptEntry.hasObject("sql") && arg.getRawValue().startsWith("sql:")) {
-                sqlBuilder.append(arg.getRawValue().substring(4));
             } else {
                 arg.reportUnhandled();
             }
-        }
-        if (sqlBuilder.length() > 0) {
-            scriptEntry.addObject("sql", new ElementTag(sqlBuilder.toString().trim()));
         }
         if (!scriptEntry.hasObject("id") || !scriptEntry.hasObject("sql") || !scriptEntry.hasObject("args")) {
             throw new InvalidArgumentsException("Must specify id, sql, and args!");
@@ -77,7 +78,7 @@ public class DbExecuteBatchCommand extends AbstractCommand {
             try {
                 conn = Datenizen.getInstance().getDatabaseManager().getConnection(id);
                 conn.setAutoCommit(false);
-                
+
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {
                     for (String row : argsList) {
                         ListTag rowArgs = ListTag.valueOf(row, scriptEntry.getContext());
@@ -87,16 +88,12 @@ public class DbExecuteBatchCommand extends AbstractCommand {
                         ps.addBatch();
                     }
                     int[] results = ps.executeBatch();
-                    int totalAffected = 0;
-                    for (int res : results) {
-                        if (res > 0) totalAffected += res;
-                    }
-                    
+                    int total = 0;
+                    for (int r : results) if (r > 0) total += r;
+                    final int finalTotal = total;
                     conn.commit();
-                    
-                    final int affected = totalAffected;
-                    Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> 
-                        DbExecutedEvent.instance.fireFor(id, label, affected)
+                    Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
+                        DbExecutedEvent.instance.fireFor(id, label, finalTotal)
                     );
                 }
             } catch (Exception e) {
@@ -104,7 +101,7 @@ public class DbExecuteBatchCommand extends AbstractCommand {
                 if (conn != null) {
                     try { conn.rollback(); } catch (Exception ignored) {}
                 }
-                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> 
+                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
                     DbErrorEvent.instance.fireFor(id, e.getMessage(), sql)
                 );
             } finally {

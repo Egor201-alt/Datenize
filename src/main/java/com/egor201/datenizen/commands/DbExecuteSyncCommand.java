@@ -19,11 +19,14 @@ public class DbExecuteSyncCommand extends AbstractCommand {
     // @Syntax db_execute_sync [id:<id>] [sql:<query>] (args:<list>) (tx:<tx_id>)
     // @Required 2
     // @Maximum 4
-    // @Short Executes a synchronous SQL query.
+    // @Short Executes a synchronous SQL query on the main thread.
     // @Group Datenizen
     //
     // @Description
     // Executes a query on the main thread. Useful for server shutdown or player quit events.
+    // The sql argument supports both prefixed and quoted forms:
+    //   sql:UPDATE players SET coins=? WHERE uuid=?
+    //   "sql:UPDATE players SET coins=? WHERE uuid=?"
     // -->
 
     public DbExecuteSyncCommand() {
@@ -34,26 +37,21 @@ public class DbExecuteSyncCommand extends AbstractCommand {
 
     @Override
     public void parseArgs(ScriptEntry scriptEntry) throws InvalidArgumentsException {
-        StringBuilder sqlBuilder = new StringBuilder();
         for (Argument arg : scriptEntry) {
             if (!scriptEntry.hasObject("id") && arg.matchesPrefix("id")) {
                 scriptEntry.addObject("id", arg.asElement());
+            } else if (!scriptEntry.hasObject("sql") && arg.matchesPrefix("sql")) {
+                scriptEntry.addObject("sql", arg.asElement());
+            } else if (!scriptEntry.hasObject("sql") && !arg.hasPrefix()
+                    && arg.getValue().startsWith("sql:")) {
+                scriptEntry.addObject("sql", new ElementTag(arg.getValue().substring(4)));
             } else if (!scriptEntry.hasObject("args") && arg.matchesPrefix("args")) {
                 scriptEntry.addObject("args", arg.asType(ListTag.class));
             } else if (!scriptEntry.hasObject("tx") && arg.matchesPrefix("tx")) {
                 scriptEntry.addObject("tx", arg.asElement());
-            } else if (arg.matchesPrefix("sql")) {
-                sqlBuilder.append(arg.getValue());
-            } else if (!arg.hasPrefix() && sqlBuilder.length() > 0) {
-                sqlBuilder.append(" ").append(arg.getRawValue());
-            } else if (!scriptEntry.hasObject("sql") && arg.getRawValue().startsWith("sql:")) {
-                sqlBuilder.append(arg.getRawValue().substring(4));
             } else {
                 arg.reportUnhandled();
             }
-        }
-        if (sqlBuilder.length() > 0) {
-            scriptEntry.addObject("sql", new ElementTag(sqlBuilder.toString().trim()));
         }
         if (!scriptEntry.hasObject("id") || !scriptEntry.hasObject("sql")) {
             throw new InvalidArgumentsException("Must specify id and sql!");
@@ -71,10 +69,11 @@ public class DbExecuteSyncCommand extends AbstractCommand {
         Connection conn = null;
         PreparedStatement ps = null;
         try {
-            conn = txId != null ? Datenizen.getInstance().getDatabaseManager().getTransactionConnection(txId) 
-                                : Datenizen.getInstance().getDatabaseManager().getConnection(id);
-            
-            if (conn == null) throw new Exception("Connection not found!");
+            conn = txId != null
+                    ? Datenizen.getInstance().getDatabaseManager().getTransactionConnection(txId)
+                    : Datenizen.getInstance().getDatabaseManager().getConnection(id);
+
+            if (conn == null) throw new Exception("Connection not found for id: " + id);
 
             ps = conn.prepareStatement(sql);
             if (args != null) {
