@@ -25,7 +25,6 @@ public class DbExecutedEvent extends ScriptEvent {
     // <context.affected_rows> returns the ElementTag of how many rows were affected.
     //
     // -->
-
     public static DbExecutedEvent instance;
     private ElementTag id;
     private ElementTag label;

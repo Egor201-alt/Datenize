@@ -31,17 +31,17 @@ public class DatenizenTags {
             }
             try (ResultSet rs = ps.executeQuery()) {
                 ResultSetMetaData meta = rs.getMetaData();
-                int columnCount = meta.getColumnCount();
-                ListTag resultList = new ListTag();
+                int cols = meta.getColumnCount();
+                ListTag result = new ListTag();
                 while (rs.next()) {
                     MapTag row = new MapTag();
-                    for (int i = 1; i <= columnCount; i++) {
+                    for (int i = 1; i <= cols; i++) {
                         Object val = rs.getObject(i);
                         row.putObject(meta.getColumnName(i), new ElementTag(val == null ? "null" : val.toString()));
                     }
-                    resultList.addObject(row);
+                    result.addObject(row);
                 }
-                return resultList;
+                return result;
             }
         } catch (Exception e) {
             Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
@@ -73,6 +73,51 @@ public class DatenizenTags {
         });
 
         // <--[tag]
+        // @Attribute <db_query_first[<id>].sql[<query>].args[<list>]>
+        // @Returns MapTag
+        // @Group Datenizen
+        // @Description Returns the first row of the query result as a MapTag, or null if no rows.
+        // Much cleaner than db_query when you only need one row.
+        //
+        // @Usage
+        // - define player <db_query_first[main].sql[SELECT * FROM players WHERE uuid=?].args[<player.uuid>]>
+        // - narrate <[player].get[coins]>
+        // -->
+        TagManager.registerTagHandler(MapTag.class, "db_query_first", attribute -> {
+            if (!attribute.hasParam()) return null;
+            String id = attribute.getParam();
+            attribute.fulfill(1);
+            if (attribute.startsWith("sql") && attribute.hasParam()) {
+                String sql = attribute.getParam();
+                attribute.fulfill(1);
+                ListTag args = attribute.startsWith("args") && attribute.hasParam() ? attribute.contextAsType(1, ListTag.class) : null;
+                if (args != null) attribute.fulfill(1);
+                try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id);
+                     PreparedStatement ps = conn.prepareStatement(sql)) {
+                    if (args != null) {
+                        for (int i = 0; i < args.size(); i++) ps.setObject(i + 1, args.get(i));
+                    }
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (rs.next()) {
+                            ResultSetMetaData meta = rs.getMetaData();
+                            int cols = meta.getColumnCount();
+                            MapTag row = new MapTag();
+                            for (int i = 1; i <= cols; i++) {
+                                Object val = rs.getObject(i);
+                                row.putObject(meta.getColumnName(i), new ElementTag(val == null ? "null" : val.toString()));
+                            }
+                            return row;
+                        }
+                    }
+                } catch (Exception e) {
+                    Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
+                        DbErrorEvent.instance.fireFor(id, e.getMessage(), sql));
+                }
+            }
+            return null;
+        });
+
+        // <--[tag]
         // @Attribute <db_convert_map[<id>].sql[<query>].args[<list>]>
         // @Returns MapTag
         // @Group Datenizen
@@ -97,9 +142,7 @@ public class DatenizenTags {
                         while (rs.next()) {
                             Object key = rs.getObject(1);
                             Object val = rs.getObject(2);
-                            if (key != null) {
-                                map.putObject(key.toString(), new ElementTag(val == null ? "null" : val.toString()));
-                            }
+                            if (key != null) map.putObject(key.toString(), new ElementTag(val == null ? "null" : val.toString()));
                         }
                         return map;
                     }
@@ -133,17 +176,17 @@ public class DatenizenTags {
                     }
                     try (ResultSet rs = ps.executeQuery()) {
                         ResultSetMetaData meta = rs.getMetaData();
-                        int columnCount = meta.getColumnCount();
-                        JsonArray jsonArray = new JsonArray();
+                        int cols = meta.getColumnCount();
+                        JsonArray arr = new JsonArray();
                         while (rs.next()) {
                             JsonObject obj = new JsonObject();
-                            for (int i = 1; i <= columnCount; i++) {
+                            for (int i = 1; i <= cols; i++) {
                                 String val = rs.getString(i);
                                 obj.addProperty(meta.getColumnName(i), val == null ? "null" : val);
                             }
-                            jsonArray.add(obj);
+                            arr.add(obj);
                         }
-                        return new ElementTag(jsonArray.toString());
+                        return new ElementTag(arr.toString());
                     }
                 } catch (Exception e) {
                     Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
@@ -157,8 +200,7 @@ public class DatenizenTags {
         // @Attribute <db_last_id[<tx_id>]>
         // @Returns ElementTag
         // @Group Datenizen
-        // @Description Returns the last inserted row ID within a transaction.
-        // MUST pass a transaction ID to guarantee the same connection.
+        // @Description Returns the last inserted row ID. MUST pass a transaction ID to guarantee the same connection.
         // -->
         TagManager.registerTagHandler(ElementTag.class, "db_last_id", attribute -> {
             if (!attribute.hasParam()) return null;
@@ -171,8 +213,7 @@ public class DatenizenTags {
             String sql = type.equals("sqlite") ? "SELECT last_insert_rowid()"
                        : type.equals("postgresql") ? "SELECT LASTVAL()"
                        : "SELECT LAST_INSERT_ID()";
-            try (PreparedStatement ps = conn.prepareStatement(sql);
-                 ResultSet rs = ps.executeQuery()) {
+            try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) return new ElementTag(rs.getString(1));
             } catch (Exception e) {
                 Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
@@ -301,6 +342,33 @@ public class DatenizenTags {
         });
 
         // <--[tag]
+        // @Attribute <db_tables[<id>]>
+        // @Returns ListTag
+        // @Group Datenizen
+        // @Description Returns all table names in the database.
+        //
+        // @Usage
+        // - narrate "Tables: <db_tables[main]>"
+        // -->
+        TagManager.registerTagHandler(ListTag.class, "db_tables", attribute -> {
+            if (!attribute.hasParam()) return null;
+            String id = attribute.getParam();
+            attribute.fulfill(1);
+            try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id)) {
+                DatabaseMetaData meta = conn.getMetaData();
+                try (ResultSet rs = meta.getTables(null, null, "%", new String[]{"TABLE"})) {
+                    ListTag list = new ListTag();
+                    while (rs.next()) list.addObject(new ElementTag(rs.getString("TABLE_NAME")));
+                    return list;
+                }
+            } catch (Exception e) {
+                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), "GET TABLES"));
+            }
+            return null;
+        });
+
+        // <--[tag]
         // @Attribute <db_count[<id>].table[<name>]>
         // @Returns ElementTag
         // @Group Datenizen
@@ -363,7 +431,7 @@ public class DatenizenTags {
         // @Attribute <db_connected[<id>]>
         // @Returns ElementTag(Boolean)
         // @Group Datenizen
-        // @Description Returns true if the specified database ID is registered and its pool is open.
+        // @Description Returns true if the database ID is registered and its pool is open.
         //
         // @Usage
         // - if <db_connected[main]>:
@@ -381,12 +449,12 @@ public class DatenizenTags {
         // @Attribute <db_ping[<id>]>
         // @Returns ElementTag(Boolean)
         // @Group Datenizen
-        // @Description Actively tests the connection by calling isValid(1) on a pooled connection.
+        // @Description Actively tests the connection with isValid(1).
         // More reliable than db_connected for detecting stale or dropped connections.
         //
         // @Usage
         // - if !<db_ping[main]>:
-        //   - narrate "Database connection lost!"
+        //   - db_reconnect id:main
         // -->
         TagManager.registerTagHandler(ElementTag.class, "db_ping", attribute -> {
             if (!attribute.hasParam()) return new ElementTag(false);
@@ -406,10 +474,15 @@ public class DatenizenTags {
         // @Returns ListTag
         // @Group Datenizen
         // @Description Returns a list of all active database connection IDs.
+        //
+        // @Usage
+        // - narrate "Active DBs: <db_list>"
         // -->
         TagManager.registerTagHandler(ListTag.class, "db_list", attribute -> {
             ListTag list = new ListTag();
-            list.addAll(Datenizen.getInstance().getDatabaseManager().getActiveIds());
+            for (String id : Datenizen.getInstance().getDatabaseManager().getActiveIds()) {
+                list.addObject(new ElementTag(id));
+            }
             return list;
         });
 
@@ -417,26 +490,28 @@ public class DatenizenTags {
         // @Attribute <db_table_exists[<id>|<table_name>]>
         // @Returns ElementTag(Boolean)
         // @Group Datenizen
-        // @Description Cleaner way to check if a table exists without using nested tags.
+        // @Description Cleaner single-param syntax to check if a table exists.
+        //
+        // @Usage
+        // - if <db_table_exists[main|players]>:
+        //   - narrate "Table exists."
         // -->
         TagManager.registerTagHandler(ElementTag.class, "db_table_exists", attribute -> {
-            if (!attribute.hasParam()) return null;
+            if (!attribute.hasParam()) return new ElementTag(false);
             String param = attribute.getParam();
-            
-            if (param.contains("|")) {
-                String[] parts = param.split("\\|", 2);
-                String id = parts[0];
-                String table = parts[1];
-                attribute.fulfill(1);
-                
-                try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id)) {
-                    DatabaseMetaData meta = conn.getMetaData();
-                    try (ResultSet rs = meta.getTables(null, null, table, null)) {
-                        return new ElementTag(rs.next());
-                    }
-                } catch (Exception e) {
-                    Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> DbErrorEvent.instance.fireFor(id, e.getMessage(), "CHECK TABLE EXISTS"));
+            attribute.fulfill(1);
+            int sep = param.indexOf('|');
+            if (sep < 1) return new ElementTag(false);
+            String id    = param.substring(0, sep);
+            String table = param.substring(sep + 1);
+            try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id)) {
+                DatabaseMetaData meta = conn.getMetaData();
+                try (ResultSet rs = meta.getTables(null, null, table, null)) {
+                    return new ElementTag(rs.next());
                 }
+            } catch (Exception e) {
+                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), "CHECK TABLE EXISTS"));
             }
             return new ElementTag(false);
         });

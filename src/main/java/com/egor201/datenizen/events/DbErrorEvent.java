@@ -14,6 +14,8 @@ public class DbErrorEvent extends ScriptEvent {
     //
     // @Cancellable false
     //
+    // @Switch id:<id> to only fire for a specific database id.
+    //
     // @Triggers when a database SQL exception occurs.
     //
     // @Context
@@ -31,27 +33,29 @@ public class DbErrorEvent extends ScriptEvent {
     public DbErrorEvent() {
         instance = this;
         registerCouldMatcher("db error");
+        registerSwitches("id");
     }
 
     @Override
     public boolean matches(ScriptPath path) {
+        if (!runGenericSwitchCheck(path, "id", id.asString())) return false;
         return super.matches(path);
     }
 
     @Override
     public ObjectTag getContext(String name) {
         return switch (name) {
-            case "id" -> id;
+            case "id"    -> id;
             case "error" -> error;
             case "query" -> query;
-            default -> super.getContext(name);
+            default      -> super.getContext(name);
         };
     }
 
     public void fireFor(String id, String error, String query) {
-        this.id = new ElementTag(id);
-        this.error = new ElementTag(error);
-        this.query = new ElementTag(query);
+        this.id    = new ElementTag(id);
+        this.error = new ElementTag(error != null ? error : "");
+        this.query = new ElementTag(query != null ? query : "");
         fire();
     }
 }

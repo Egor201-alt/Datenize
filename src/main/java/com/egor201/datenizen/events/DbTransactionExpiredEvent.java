@@ -5,6 +5,7 @@ import com.denizenscript.denizencore.objects.ObjectTag;
 import com.denizenscript.denizencore.objects.core.ElementTag;
 
 public class DbTransactionExpiredEvent extends ScriptEvent {
+    
     // <--[event]
     // @Events
     // db transaction expired

@@ -1,8 +1,9 @@
 package com.egor201.datenizen.database;
 
 import com.egor201.datenizen.Datenizen;
-import com.egor201.datenizen.events.DbTransactionExpiredEvent;
+import com.egor201.datenizen.events.DbConnectionLeakedEvent;
 import com.egor201.datenizen.events.DbDisconnectedEvent;
+import com.egor201.datenizen.events.DbTransactionExpiredEvent;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.bukkit.Bukkit;
@@ -15,10 +16,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class DatabaseManager {
 
-    private final Map<String, HikariDataSource> connectionPools;
-    private final Map<String, Connection> activeTransactions;
-    private final Map<String, Long> transactionStartTimes;
-    private final Map<String, String> transactionDbIds;
+    private final Map<String, HikariDataSource> connectionPools       = new ConcurrentHashMap<>();
+    private final Map<String, Connection>        activeTransactions    = new ConcurrentHashMap<>();
+    private final Map<String, Long>              transactionStartTimes = new ConcurrentHashMap<>();
+    private final Map<String, String>            transactionDbIds      = new ConcurrentHashMap<>();
+    private final Map<String, HikariConfig>      savedConfigs          = new ConcurrentHashMap<>();
 
     private static final Map<String, String> DRIVER_ALIASES = Map.of(
         "sqlite",     "org.sqlite.JDBC",
@@ -31,26 +33,23 @@ public class DatabaseManager {
     private static final Set<String> ALLOWED_DRIVERS = new HashSet<>(DRIVER_ALIASES.values());
 
     public DatabaseManager() {
-        this.connectionPools = new ConcurrentHashMap<>();
-        this.activeTransactions = new ConcurrentHashMap<>();
-        this.transactionStartTimes = new ConcurrentHashMap<>();
-        this.transactionDbIds = new ConcurrentHashMap<>();
-
         Bukkit.getScheduler().runTaskTimerAsynchronously(Datenizen.getInstance(), () -> {
             long now = System.currentTimeMillis();
             List<String> expired = new ArrayList<>();
 
             for (Map.Entry<String, Long> entry : transactionStartTimes.entrySet()) {
-                if (now - entry.getValue() > 300000) {
+                if (now - entry.getValue() > 300_000) {
                     expired.add(entry.getKey());
                 }
             }
 
             for (String txId : expired) {
                 String dbId = transactionDbIds.get(txId);
-                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                    DbTransactionExpiredEvent.instance.fireFor(txId, dbId)
-                );
+                long elapsedSeconds = (now - transactionStartTimes.getOrDefault(txId, now)) / 1000;
+                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> {
+                    DbConnectionLeakedEvent.instance.fireFor(txId, elapsedSeconds);
+                    DbTransactionExpiredEvent.instance.fireFor(txId, dbId);
+                });
                 try { rollbackTransaction(txId); } catch (SQLException ignored) {}
             }
         }, 1200L, 1200L);
@@ -58,20 +57,18 @@ public class DatabaseManager {
 
     public static String resolveDriver(String input) {
         if (input == null) return null;
-        String alias = DRIVER_ALIASES.get(input.toLowerCase());
-        return alias != null ? alias : null;
+        return DRIVER_ALIASES.get(input.toLowerCase());
     }
 
     public static String resolveUrl(String driver, String rawUrl) {
         if (rawUrl == null) return null;
         if (rawUrl.startsWith("jdbc:")) return rawUrl;
-
         return switch (driver) {
             case "org.sqlite.JDBC"          -> "jdbc:sqlite:" + rawUrl;
             case "com.mysql.cj.jdbc.Driver" -> "jdbc:mysql://" + rawUrl;
             case "org.mariadb.jdbc.Driver"  -> "jdbc:mariadb://" + rawUrl;
             case "org.postgresql.Driver"    -> "jdbc:postgresql://" + rawUrl;
-            default                          -> rawUrl;
+            default -> rawUrl;
         };
     }
 
@@ -83,28 +80,41 @@ public class DatabaseManager {
             return false;
         }
 
-        try {
-            HikariConfig config = new HikariConfig();
-            config.setDriverClassName(driver);
-            config.setJdbcUrl(url);
-            if (user != null && !user.isEmpty()) config.setUsername(user);
-            if (password != null && !password.isEmpty()) config.setPassword(password);
-            config.setMaximumPoolSize(10);
-            config.setMinimumIdle(2);
-            config.setConnectionTimeout(10000);
-            config.setIdleTimeout(600000);
-            config.setPoolName("Datenizen-" + id);
+        HikariConfig config = new HikariConfig();
+        config.setDriverClassName(driver);
+        config.setJdbcUrl(url);
+        if (user != null && !user.isEmpty())         config.setUsername(user);
+        if (password != null && !password.isEmpty()) config.setPassword(password);
+        config.setMaximumPoolSize(10);
+        config.setMinimumIdle(2);
+        config.setConnectionTimeout(10000);
+        config.setIdleTimeout(600000);
+        config.setPoolName("Datenizen-" + id);
 
-            try {
-                HikariDataSource dataSource = new HikariDataSource(config);
-                connectionPools.put(id, dataSource);
-                return true;
-            } catch (Exception e) {
-                Bukkit.getLogger().severe("[Datenizen] Failed to connect to database '" + id + "': " + e.getMessage());
-                return false;
-            }
+        try {
+            HikariDataSource ds = new HikariDataSource(config);
+            connectionPools.put(id, ds);
+            savedConfigs.put(id, config);
+            return true;
         } catch (Exception e) {
-            Bukkit.getLogger().severe("[Datenizen] Unexpected error setting up database '" + id + "': " + e.getMessage());
+            Bukkit.getLogger().severe("[Datenizen] Failed to connect to database '" + id + "': " + e.getMessage());
+            return false;
+        }
+    }
+
+    public boolean reconnect(String id) {
+        HikariConfig config = savedConfigs.get(id);
+        if (config == null) return false;
+
+        HikariDataSource old = connectionPools.remove(id);
+        if (old != null && !old.isClosed()) old.close();
+
+        try {
+            HikariDataSource ds = new HikariDataSource(config);
+            connectionPools.put(id, ds);
+            return true;
+        } catch (Exception e) {
+            Bukkit.getLogger().severe("[Datenizen] Failed to reconnect to database '" + id + "': " + e.getMessage());
             return false;
         }
     }
@@ -118,6 +128,7 @@ public class DatabaseManager {
             try { rollbackTransaction(tx); } catch (SQLException ignored) {}
         }
 
+        savedConfigs.remove(id);
         HikariDataSource ds = connectionPools.remove(id);
         if (ds != null) {
             if (!ds.isClosed()) ds.close();
@@ -207,8 +218,7 @@ public class DatabaseManager {
     public void analyze(String id) throws SQLException {
         String type = getDatabaseType(id);
         String sql = type.equals("sqlite") ? "VACUUM" : "ANALYZE";
-        try (Connection conn = getConnection(id);
-             Statement st = conn.createStatement()) {
+        try (Connection conn = getConnection(id); Statement st = conn.createStatement()) {
             st.execute(sql);
         }
     }
@@ -221,6 +231,7 @@ public class DatabaseManager {
         activeTransactions.clear();
         transactionStartTimes.clear();
         transactionDbIds.clear();
+        savedConfigs.clear();
 
         for (HikariDataSource ds : connectionPools.values()) {
             if (ds != null && !ds.isClosed()) ds.close();
