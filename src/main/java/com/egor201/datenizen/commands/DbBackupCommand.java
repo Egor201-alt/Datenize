@@ -72,10 +72,14 @@ public class DbBackupCommand extends AbstractCommand {
                 }
 
                 Files.copy(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.sql.SQLException e) {
+                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), e.getSQLState(), "db_backup")
+                );
             } catch (Exception e) {
                 e.printStackTrace();
                 Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                    DbErrorEvent.instance.fireFor(id, e.getMessage(), "db_backup")
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), null, "db_backup")
                 );
             }
         });

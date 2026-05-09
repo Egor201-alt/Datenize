@@ -71,14 +71,14 @@ public class DbTransactionCommand extends AbstractCommand {
                 case "rollback" -> Datenizen.getInstance().getDatabaseManager().rollbackTransaction(txId);
                 default -> {
                     Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                        DbErrorEvent.instance.fireFor(id, "Unknown action: " + action, "db_transaction")
+                        DbErrorEvent.instance.fireFor(id, "Unknown action: " + action, null, "db_transaction")
                     );
                 }
             }
         } catch (Exception e) {
             e.printStackTrace();
             Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                DbErrorEvent.instance.fireFor(id, e.getMessage(), "db_transaction " + action)
+                DbErrorEvent.instance.fireFor(id, e.getMessage(), e instanceof java.sql.SQLException ? ((java.sql.SQLException)e).getSQLState() : null, "db_transaction " + action)
             );
         }
     }

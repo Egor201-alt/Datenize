@@ -121,10 +121,14 @@ public class DbExportCsvCommand extends AbstractCommand {
                         DbCsvExportedEvent.instance.fireFor(id, path)
                     );
                 }
+            } catch (java.sql.SQLException e) {
+                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), e.getSQLState(), sql)
+                );
             } catch (Exception e) {
                 e.printStackTrace();
                 Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                    DbErrorEvent.instance.fireFor(id, e.getMessage(), sql)
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), null, sql)
                 );
             }
         });

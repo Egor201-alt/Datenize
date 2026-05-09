@@ -84,7 +84,7 @@ public class DbExecuteSyncCommand extends AbstractCommand {
             ps.executeUpdate();
         } catch (Exception e) {
             e.printStackTrace();
-            DbErrorEvent.instance.fireFor(id, e.getMessage(), sql);
+            DbErrorEvent.instance.fireFor(id, e.getMessage(), e instanceof java.sql.SQLException ? ((java.sql.SQLException)e).getSQLState() : null, sql);
         } finally {
             try { if (ps != null) ps.close(); } catch (Exception ignored) {}
             try { if (conn != null && txId == null) conn.close(); } catch (Exception ignored) {}

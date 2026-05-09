@@ -102,7 +102,7 @@ public class DbExecuteBatchCommand extends AbstractCommand {
                     try { conn.rollback(); } catch (Exception ignored) {}
                 }
                 Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                    DbErrorEvent.instance.fireFor(id, e.getMessage(), sql)
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), e instanceof java.sql.SQLException ? ((java.sql.SQLException)e).getSQLState() : null, sql)
                 );
             } finally {
                 if (conn != null) {

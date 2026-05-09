@@ -25,7 +25,7 @@ public class DbAnalyzeCommand extends AbstractCommand {
         String id = se.getElement("id").asString();
         Bukkit.getScheduler().runTaskAsynchronously(Datenizen.getInstance(), () -> {
             try { Datenizen.getInstance().getDatabaseManager().analyze(id); }
-            catch (Exception e) { Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> DbErrorEvent.instance.fireFor(id, e.getMessage(), "ANALYZE/VACUUM")); }
+            catch (java.sql.SQLException e) { Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> DbErrorEvent.instance.fireFor(id, e.getMessage(), e.getSQLState(), "ANALYZE/VACUUM")); } catch (Exception e) { Bukkit.getScheduler().runTask(Datenizen.getInstance(), () -> DbErrorEvent.instance.fireFor(id, e.getMessage(), "ANALYZE/VACUUM")); }
         });
     }
 }

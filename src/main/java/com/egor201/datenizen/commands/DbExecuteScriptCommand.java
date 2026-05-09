@@ -83,7 +83,7 @@ public class DbExecuteScriptCommand extends AbstractCommand {
                     try { conn.rollback(); } catch (Exception ignored) {}
                 }
                 Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                    DbErrorEvent.instance.fireFor(id, e.getMessage(), "SCRIPT EXECUTION")
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), null, "SCRIPT EXECUTION")
                 );
             } finally {
                 if (conn != null) {

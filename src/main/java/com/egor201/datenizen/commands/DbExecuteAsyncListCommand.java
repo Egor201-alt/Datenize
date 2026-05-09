@@ -78,7 +78,7 @@ public class DbExecuteAsyncListCommand extends AbstractCommand {
                     } catch (Exception ignored) {}
                 }
                 Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                    DbErrorEvent.instance.fireFor(id, e.getMessage(), "ASYNC LIST")
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), null, "ASYNC LIST")
                 );
             } finally {
                 if (conn != null) {

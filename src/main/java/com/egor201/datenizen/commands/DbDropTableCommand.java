@@ -67,9 +67,13 @@ public class DbDropTableCommand extends AbstractCommand {
             try (Connection conn = Datenizen.getInstance().getDatabaseManager().getConnection(id);
                  Statement st = conn.createStatement()) {
                 st.executeUpdate(sql);
+            } catch (java.sql.SQLException e) {
+                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), e.getSQLState(), sql)
+                );
             } catch (Exception e) {
                 Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                    DbErrorEvent.instance.fireFor(id, e.getMessage(), sql)
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), null, sql)
                 );
             }
         });

@@ -45,7 +45,7 @@ public class DatenizenTags {
             }
         } catch (Exception e) {
             Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                DbErrorEvent.instance.fireFor(id, e.getMessage(), sql));
+                DbErrorEvent.instance.fireFor(id, e.getMessage(), e instanceof java.sql.SQLException ? ((java.sql.SQLException)e).getSQLState() : null, sql));
             return null;
         }
     }
@@ -111,7 +111,7 @@ public class DatenizenTags {
                     }
                 } catch (Exception e) {
                     Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                        DbErrorEvent.instance.fireFor(id, e.getMessage(), sql));
+                        DbErrorEvent.instance.fireFor(id, e.getMessage(), e instanceof java.sql.SQLException ? ((java.sql.SQLException)e).getSQLState() : null, sql));
                 }
             }
             return null;
@@ -148,7 +148,7 @@ public class DatenizenTags {
                     }
                 } catch (Exception e) {
                     Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                        DbErrorEvent.instance.fireFor(id, e.getMessage(), sql));
+                        DbErrorEvent.instance.fireFor(id, e.getMessage(), e instanceof java.sql.SQLException ? ((java.sql.SQLException)e).getSQLState() : null, sql));
                 }
             }
             return null;
@@ -190,7 +190,7 @@ public class DatenizenTags {
                     }
                 } catch (Exception e) {
                     Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                        DbErrorEvent.instance.fireFor(id, e.getMessage(), sql));
+                        DbErrorEvent.instance.fireFor(id, e.getMessage(), e instanceof java.sql.SQLException ? ((java.sql.SQLException)e).getSQLState() : null, sql));
                 }
             }
             return null;
@@ -217,7 +217,7 @@ public class DatenizenTags {
                 if (rs.next()) return new ElementTag(rs.getString(1));
             } catch (Exception e) {
                 Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                    DbErrorEvent.instance.fireFor(dbId, e.getMessage(), sql));
+                    DbErrorEvent.instance.fireFor(dbId, e.getMessage(), e instanceof java.sql.SQLException ? ((java.sql.SQLException)e).getSQLState() : null, sql));
             }
             return null;
         });
@@ -242,7 +242,7 @@ public class DatenizenTags {
                     }
                 } catch (Exception e) {
                     Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                        DbErrorEvent.instance.fireFor(id, e.getMessage(), "CHECK TABLE EXISTS"));
+                        DbErrorEvent.instance.fireFor(id, e.getMessage(), null, "CHECK TABLE EXISTS"));
                 }
             }
             return new ElementTag(false);
@@ -276,7 +276,7 @@ public class DatenizenTags {
                     }
                 } catch (Exception e) {
                     Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                        DbErrorEvent.instance.fireFor(id, e.getMessage(), sql));
+                        DbErrorEvent.instance.fireFor(id, e.getMessage(), e instanceof java.sql.SQLException ? ((java.sql.SQLException)e).getSQLState() : null, sql));
                 }
             }
             return null;
@@ -307,7 +307,7 @@ public class DatenizenTags {
                     }
                 } catch (Exception e) {
                     Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                        DbErrorEvent.instance.fireFor(id, e.getMessage(), sql));
+                        DbErrorEvent.instance.fireFor(id, e.getMessage(), e instanceof java.sql.SQLException ? ((java.sql.SQLException)e).getSQLState() : null, sql));
                 }
             }
             return new ElementTag(false);
@@ -335,7 +335,7 @@ public class DatenizenTags {
                     }
                 } catch (Exception e) {
                     Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                        DbErrorEvent.instance.fireFor(id, e.getMessage(), "GET COLUMNS"));
+                        DbErrorEvent.instance.fireFor(id, e.getMessage(), null, "GET COLUMNS"));
                 }
             }
             return null;
@@ -363,7 +363,7 @@ public class DatenizenTags {
                 }
             } catch (Exception e) {
                 Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                    DbErrorEvent.instance.fireFor(id, e.getMessage(), "GET TABLES"));
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), null, "GET TABLES"));
             }
             return null;
         });
@@ -385,7 +385,7 @@ public class DatenizenTags {
                 attribute.fulfill(1);
                 if (!SAFE_NAME.matcher(table).matches()) {
                     Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                        DbErrorEvent.instance.fireFor(id, "Invalid table name: " + table, "db_count"));
+                        DbErrorEvent.instance.fireFor(id, "Invalid table name: " + table, null, "db_count"));
                     return null;
                 }
                 String sql = "SELECT COUNT(*) FROM " + table;
@@ -395,7 +395,7 @@ public class DatenizenTags {
                     if (rs.next()) return new ElementTag(rs.getInt(1));
                 } catch (Exception e) {
                     Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                        DbErrorEvent.instance.fireFor(id, e.getMessage(), sql));
+                        DbErrorEvent.instance.fireFor(id, e.getMessage(), e instanceof java.sql.SQLException ? ((java.sql.SQLException)e).getSQLState() : null, sql));
                 }
             }
             return null;
@@ -511,7 +511,7 @@ public class DatenizenTags {
                 }
             } catch (Exception e) {
                 Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                    DbErrorEvent.instance.fireFor(id, e.getMessage(), "CHECK TABLE EXISTS"));
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), null, "CHECK TABLE EXISTS"));
             }
             return new ElementTag(false);
         });

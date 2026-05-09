@@ -29,7 +29,7 @@ public class DbUpsertCommand extends AbstractCommand {
     // @Description
     // The most common game-server pattern: "save this player's data whether they exist or not."
     // Builds INSERT OR REPLACE (SQLite) or INSERT ... ON DUPLICATE KEY UPDATE (MySQL/MariaDB)
-    // or INSERT ... ON CONFLICT DO UPDATE (PostgreSQL) depending on the connected database type.
+    // or INSERT ... ON CONFLICT DO UPDATE SET col=EXCLUDED.col (PostgreSQL).
     // 'set' is a ListTag of "column=value" pairs. The key column must have a UNIQUE or PRIMARY KEY constraint.
     // Column names must be alphanumeric/underscores only. Values are safely parameterized.
     // Fires 'db executed' on success with <context.affected_rows>.
@@ -67,16 +67,16 @@ public class DbUpsertCommand extends AbstractCommand {
 
     @Override
     public void execute(ScriptEntry se) {
-        String id        = se.getElement("id").asString();
-        String table     = se.getElement("table").asString();
-        String keyCol    = se.getElement("key_column").asString();
-        String keyVal    = se.getElement("key_value").asString();
-        ListTag setList  = se.getObjectTag("set");
-        String label     = se.hasObject("label") ? se.getElement("label").asString() : null;
+        String id       = se.getElement("id").asString();
+        String table    = se.getElement("table").asString();
+        String keyCol   = se.getElement("key_column").asString();
+        String keyVal   = se.getElement("key_value").asString();
+        ListTag setList = se.getObjectTag("set");
+        String label    = se.hasObject("label") ? se.getElement("label").asString() : null;
 
         if (!SAFE_NAME.matcher(table).matches() || !SAFE_NAME.matcher(keyCol).matches()) {
             Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                DbErrorEvent.instance.fireFor(id, "Invalid table or key_column name", "db_upsert")
+                DbErrorEvent.instance.fireFor(id, "Invalid table or key_column name", null, "db_upsert")
             );
             return;
         }
@@ -86,7 +86,7 @@ public class DbUpsertCommand extends AbstractCommand {
             int eq = entry.indexOf('=');
             if (eq < 1) {
                 Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                    DbErrorEvent.instance.fireFor(id, "Invalid set entry: " + entry, "db_upsert")
+                    DbErrorEvent.instance.fireFor(id, "Invalid set entry: " + entry, null, "db_upsert")
                 );
                 return;
             }
@@ -94,7 +94,7 @@ public class DbUpsertCommand extends AbstractCommand {
             String val = entry.substring(eq + 1);
             if (!SAFE_NAME.matcher(col).matches()) {
                 Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                    DbErrorEvent.instance.fireFor(id, "Invalid column name: " + col, "db_upsert")
+                    DbErrorEvent.instance.fireFor(id, "Invalid column name: " + col, null, "db_upsert")
                 );
                 return;
             }
@@ -111,6 +111,7 @@ public class DbUpsertCommand extends AbstractCommand {
                 int idx = 1;
                 ps.setObject(idx++, keyVal);
                 for (Pair p : pairs) ps.setObject(idx++, p.val());
+
                 if (dbType.equals("mysql") || dbType.equals("mariadb")) {
                     for (Pair p : pairs) ps.setObject(idx++, p.val());
                 }
@@ -119,10 +120,14 @@ public class DbUpsertCommand extends AbstractCommand {
                 Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
                     DbExecutedEvent.instance.fireFor(id, label, affected)
                 );
+            } catch (java.sql.SQLException e) {
+                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), e.getSQLState(), sql)
+                );
             } catch (Exception e) {
                 e.printStackTrace();
                 Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                    DbErrorEvent.instance.fireFor(id, e.getMessage(), sql)
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), null, sql)
                 );
             }
         });
@@ -137,7 +142,12 @@ public class DbUpsertCommand extends AbstractCommand {
             cols.append(",").append(pairs.get(i).col());
             placeholders.append(",?");
             if (i > 0) updatePart.append(",");
-            updatePart.append(pairs.get(i).col()).append("=?");
+            updatePart.append(pairs.get(i).col());
+            if (dbType.equals("postgresql")) {
+                updatePart.append("=EXCLUDED.").append(pairs.get(i).col());
+            } else {
+                updatePart.append("=?");
+            }
         }
 
         return switch (dbType) {

@@ -139,10 +139,14 @@ public class DbImportCsvCommand extends AbstractCommand {
                         DbCsvImportedEvent.instance.fireFor(id, table, finalRowsCount)
                     );
                 }
+            } catch (java.sql.SQLException e) {
+                Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), e.getSQLState(), "CSV IMPORT " + table)
+                );
             } catch (Exception e) {
                 e.printStackTrace();
                 Bukkit.getScheduler().runTask(Datenizen.getInstance(), () ->
-                    DbErrorEvent.instance.fireFor(id, e.getMessage(), "CSV IMPORT " + table)
+                    DbErrorEvent.instance.fireFor(id, e.getMessage(), null, "CSV IMPORT " + table)
                 );
             }
         });
